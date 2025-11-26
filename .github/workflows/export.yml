@@ -1,47 +1,61 @@
-name: Export CPI Artifacts in Structured Format
+name: Sync Multiple CPI Packages
 
 on:
   workflow_dispatch:
+    inputs:
+      packages:
+        description: "Enter package IDs (comma or space separated)"
+        required: true
 
 jobs:
-  export:
+  sync:
     runs-on: ubuntu-latest
-
-    container:
-      image: engswee/flashpipe:latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+      uses: actions/checkout@v4
 
-      - name: Export CPI artifacts
-        uses: engswee/flashpipe-action/sync@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-id: CPIPracticeflows
-          dir-artifacts-relative: cpi-artifacts
-          git-commit-msg: "Exported from CPI"
-          sync-package-details: true
-
-      - name: Prepare structured folder
+      - name: Normalize package list
+        id: normalize
         run: |
-          mkdir -p cpi-artifacts/CPIPracticeflows
+          RAW="${{ github.event.inputs.packages }}"
+          CLEANED=$(echo "$RAW" | tr ',' ' ')
+          echo "packages=$CLEANED" >> $GITHUB_OUTPUT
 
-          for item in cpi-artifacts/*; do
-            if [ -d "$item" ] && [ "$(basename "$item")" != "CPIPracticeflows" ]; then
-              mv "$item" cpi-artifacts/CPIPracticeflows/
-            fi
-          done
+      - name: Run FlashPipe inside Docker
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+        run: |
+          docker run --rm \
+            --user $(id -u):$(id -g) \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            -e TMN_HOST="$TMN_HOST" \
+            -e OAUTH_HOST="$OAUTH_HOST" \
+            -e CLIENT_ID="$CLIENT_ID" \
+            -e CLIENT_SECRET="$CLIENT_SECRET" \
+            engswee/flashpipe:latest \
+            sh -c '
+              for PKG in ${{ steps.normalize.outputs.packages }}; do
+                echo "➡ Syncing $PKG..."
+                flashpipe sync \
+                  --tmn-host "$TMN_HOST" \
+                  --oauth-host "$OAUTH_HOST" \
+                  --oauth-clientid "$CLIENT_ID" \
+                  --oauth-clientsecret "$CLIENT_SECRET" \
+                  --package-id "$PKG" \
+                  --dir-artifacts "cpi-artifacts/$PKG" \
+                  --sync-package-details
+              done
+            '
 
-          if [ ! -f cpi-artifacts/CPIPracticeflows/package.json ]; then
-            echo '{' > cpi-artifacts/CPIPracticeflows/package.json
-            echo '  "Name": "CPIPracticeflows",' >> cpi-artifacts/CPIPracticeflows/package.json
-            echo '  "Id": "CPIPracticeflows",' >> cpi-artifacts/CPIPracticeflows/package.json
-            echo '  "Description": "Auto-generated from CPI export",' >> cpi-artifacts/CPIPracticeflows/package.json
-            echo '  "ShortText": "CPIPracticeflows",' >> cpi-artifacts/CPIPracticeflows/package.json
-            echo '  "Version": "1.0.0"' >> cpi-artifacts/CPIPracticeflows/package.json
-            echo '}' >> cpi-artifacts/CPIPracticeflows/package.json
-          fi
+      - name: Commit & Push changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Synced packages: ${{ github.event.inputs.packages }}" || echo "No changes"
+          git push || true
