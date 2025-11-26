@@ -1,26 +1,54 @@
-name: Deploy CPI Artifacts Back to CPI
+name: Deploy CPI Packages
 
 on:
   workflow_dispatch:
+    inputs:
+      packages:
+        description: "Enter package IDs (comma or space separated)"
+        required: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    container:
-      image: engswee/flashpipe:latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy iFlows using FlashPipe
-        uses: engswee/flashpipe-action/deploy@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+      - name: Normalize package list
+        id: normalize
+        run: |
+          RAW="${{ github.event.inputs.packages }}"
+          CLEANED=$(echo "$RAW" | tr ',' ' ')
+          echo "packages=$CLEANED" >> $GITHUB_OUTPUT
 
-          artifact-type: Integration
-          artifact-ids: JSONtoXML_messagemapping
+      - name: Deploy packages to CPI
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            -e TMN_HOST="$TMN_HOST" \
+            -e OAUTH_HOST="$OAUTH_HOST" \
+            -e CLIENT_ID="$CLIENT_ID" \
+            -e CLIENT_SECRET="$CLIENT_SECRET" \
+            engswee/flashpipe:latest \
+            sh -c '
+              for PKG in ${{ steps.normalize.outputs.packages }}; do
+                echo "🚀 Deploying $PKG..."
+                flashpipe deploy \
+                  --tmn-host "$TMN_HOST" \
+                  --oauth-host "$OAUTH_HOST" \
+                  --oauth-clientid "$CLIENT_ID" \
+                  --oauth-clientsecret "$CLIENT_SECRET" \
+                  --package-id "$PKG" \
+                  --dir-artifacts "cpi-artifacts/$PKG"
+              done
+            '
+
+      - name: Deployment Completed
+        run: echo "✅ Deployment finished successfully!"
