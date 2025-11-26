@@ -1,4 +1,4 @@
-name: Deploy CPI Artifacts Back to CPI
+name: Deploy CPI Package and Artifacts
 
 on:
   workflow_dispatch:
@@ -14,7 +14,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy iFlows to CPI
+      - name: Create Package in CPI (if missing)
+        run: |
+          PACKAGE_NAME="CPIPracticeflows"
+          DESC="Re-deployed from GitHub"
+          SHORTTEXT="CPIPracticeflows"
+
+          curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "https://${{ secrets.DEV_TMN_HOST }}/api/v1/IntegrationPackages" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"Name\": \"$PACKAGE_NAME\",
+              \"Id\": \"$PACKAGE_NAME\",
+              \"Description\": \"$DESC\",
+              \"ShortText\": \"$SHORTTEXT\"
+            }" \
+            -u "${{ secrets.DEV_USERID }}:${{ secrets.DEV_PASSWORD }}" | grep -E "200|201|409"
+
+      - name: Upload Artifacts into Package
+        run: |
+          PACKAGE="CPIPracticeflows"
+
+          for dir in cpi-artifacts/CPIPracticeflows/*/; do
+            ARTIFACT=$(basename "$dir")
+            echo "Uploading $ARTIFACT"
+
+            flashpipe \
+              --tmn-host "${{ secrets.DEV_TMN_HOST }}" \
+              --oauth-host "${{ secrets.DEV_OAUTH_HOST }}" \
+              --oauth-clientid "${{ secrets.DEV_CLIENT_ID }}" \
+              --oauth-clientsecret "${{ secrets.DEV_CLIENT_SECRET }}" \
+              upload \
+              --package-id "$PACKAGE" \
+              --artifact-id "$ARTIFACT" \
+              --artifact-dir "$dir"
+          done
+
+      - name: Deploy Artifacts
         run: |
           flashpipe \
             --tmn-host "${{ secrets.DEV_TMN_HOST }}" \
