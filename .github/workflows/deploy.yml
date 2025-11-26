@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy CPI artifacts using FlashPipe
+      - name: Deploy iFlows using FlashPipe
         uses: engswee/flashpipe-action/deploy@v1
         with:
           tmn-host: ${{ secrets.DEV_TMN_HOST }}
@@ -22,11 +22,5 @@ jobs:
           oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
 
-          # ✅ SAME PACKAGE NAME AS BEFORE
-          package-id: CPIPracticeflows
-
-          # ✅ POINT TO THE PACKAGE FOLDER
-          dir-artifacts-relative: cpi-artifacts/CPIPracticeflows
-
-          # ✅ Update existing flows
-          deploy-policy: UPDATE
+          artifact-type: Integration
+          artifact-ids: JSONtoXML_messagemapping
