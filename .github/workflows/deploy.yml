@@ -1,36 +1,3 @@
-name: Deploy CPI Artifacts Back to CPI
-
-on:
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ✅ Step 1: Build ZIPs from folders
-      - name: Build ZIPs from folders
-        run: |
-          PACKAGE="CPIPracticeflows"
-          BASE_DIR="cpi-artifacts/$PACKAGE"
-
-          echo "Building ZIPs from folders in $BASE_DIR"
-
-          cd "$BASE_DIR"
-
-          for dir in */ ; do
-            ARTIFACT="${dir%/}"
-            ZIPFILE="${ARTIFACT}.zip"
-
-            echo "Zipping $ARTIFACT -> $ZIPFILE"
-
-            zip -r "$ZIPFILE" "$ARTIFACT"
-          done
-
-      # ✅ Step 2: Upload & Deploy to CPI
       - name: Upload & Deploy to CPI
         run: |
           PACKAGE="CPIPracticeflows"
@@ -57,9 +24,11 @@ jobs:
 
           for zipfile in *.zip; do
             ARTIFACT="${zipfile%.zip}"
-            VERSION="1.0.0"
+            
+            # ✅ Use correct version from manifest
+            VERSION="1.0.1"
 
-            echo "Uploading $ARTIFACT"
+            echo "Uploading $ARTIFACT (Version $VERSION)"
 
             HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
               -X PUT "https://$HOST/api/v1/IntegrationDesigntimeArtifacts(Id='$ARTIFACT',Version='$VERSION',ArtifactType='IntegrationFlow')/$value" \
