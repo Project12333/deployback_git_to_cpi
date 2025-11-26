@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy CPI package
+      - name: Deploy iFlows to CPI
         run: |
           flashpipe \
             --tmn-host "${{ secrets.DEV_TMN_HOST }}" \
@@ -22,6 +22,4 @@ jobs:
             --oauth-clientid "${{ secrets.DEV_CLIENT_ID }}" \
             --oauth-clientsecret "${{ secrets.DEV_CLIENT_SECRET }}" \
             deploy \
-            --package-id "CPIPracticeflows" \
-            --dir-artifacts "cpi-artifacts/CPIPracticeflows" \
-            --deploy-policy "CREATE_OR_UPDATE"
+            --artifact-ids "JSONtoXML_messagemapping,MulticurrencyInvoiceSplitter,WeatherForecast"
