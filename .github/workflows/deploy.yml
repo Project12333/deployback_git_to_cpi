@@ -19,7 +19,7 @@ jobs:
 
             docker run --rm \
               -v "$PWD":/workspace \
-              ppiper/cx-server-companion:latest \
+              ppiper/piper \
               piper cpiDeployIntegrationArtifact \
                 --host "${{ secrets.CPI_HOST }}" \
                 --tokenUrl "${{ secrets.CPI_TOKEN_URL }}" \
