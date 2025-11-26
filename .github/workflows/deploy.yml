@@ -1,4 +1,4 @@
-name: Deploy CPI Packages (FlashPipe v3.5.0)
+name: Deploy CPI Package & Artifacts
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
           CLEANED=$(echo "$RAW" | tr ',' ' ')
           echo "packages=$CLEANED" >> $GITHUB_OUTPUT
 
-      - name: Deploy packages to CPI
+      - name: Upload Package & Deploy Artifacts
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
@@ -36,17 +36,36 @@ jobs:
             -e OAUTH_HOST="$OAUTH_HOST" \
             -e CLIENT_ID="$CLIENT_ID" \
             -e CLIENT_SECRET="$CLIENT_SECRET" \
-            engswee/flashpipe:3.5.0 \
+            engswee/flashpipe:latest \
             sh -c '
               for PKG in ${{ steps.normalize.outputs.packages }}; do
-                echo "🚀 Deploying package: $PKG"
-                flashpipe deploy \
+                echo "📦 Uploading package: $PKG"
+
+                # ✅ Step 1: Upload package metadata from JSON
+                flashpipe package-upload \
                   --tmn-host "$TMN_HOST" \
                   --oauth-host "$OAUTH_HOST" \
                   --oauth-clientid "$CLIENT_ID" \
                   --oauth-clientsecret "$CLIENT_SECRET" \
                   --package-id "$PKG" \
-                  --dir-artifacts "cpi-artifacts/$PKG"
+                  --package-file "cpi-artifacts/$PKG/${PKG}.json"
+
+                echo "🚀 Deploying artifacts in package: $PKG"
+
+                # ✅ Step 2: Deploy each artifact inside the package folder
+                for ART in $(ls cpi-artifacts/$PKG); do
+                  if [ -d "cpi-artifacts/$PKG/$ART" ]; then
+                    echo "➡ Deploying artifact: $ART"
+                    flashpipe deploy \
+                      --tmn-host "$TMN_HOST" \
+                      --oauth-host "$OAUTH_HOST" \
+                      --oauth-clientid "$CLIENT_ID" \
+                      --oauth-clientsecret "$CLIENT_SECRET" \
+                      --artifact-ids "$ART" \
+                      --dir-artifacts "cpi-artifacts/$PKG/$ART"
+                  fi
+                done
+
               done
             '
 
