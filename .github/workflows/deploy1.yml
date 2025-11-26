@@ -1,0 +1,61 @@
+name: Sync All CPI Packages to Tenant
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    container:
+      image: engswee/flashpipe:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      #####################################################
+      # ✅ PACKAGE 1: CPIPracticeflows
+      #####################################################
+
+      - name: 'Update package CPIPracticeflows'
+        uses: engswee/flashpipe-action/update/package@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+          package-file-relative: cpi-artifacts/CPIPracticeflows/CPIPracticeflows.json
+
+      - name: 'Sync CPIPracticeflows artifacts'
+        uses: engswee/flashpipe-action/sync@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+          package-id: CPIPracticeflows
+          target: tenant
+          dir-artifacts-relative: cpi-artifacts/CPIPracticeflows
+
+      #####################################################
+      # ✅ PACKAGE 2: deploycheck
+      #####################################################
+
+      - name: 'Update package deploycheck'
+        uses: engswee/flashpipe-action/update/package@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+          package-file-relative: cpi-artifacts/deploycheck/deploycheck.json
+
+      - name: 'Sync deploycheck artifacts'
+        uses: engswee/flashpipe-action/sync@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+          package-id: deploycheck
+          target: tenant
+          dir-artifacts-relative: cpi-artifacts/deploycheck
