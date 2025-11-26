@@ -1,4 +1,4 @@
-name: Deploy CPI Artifacts to CPI
+name: Deploy CPI Artifacts Back to CPI
 
 on:
   workflow_dispatch:
@@ -7,30 +7,26 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    container:
+      image: engswee/flashpipe:latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - name: Deploy CPI artifacts using FlashPipe
+        uses: engswee/flashpipe-action/deploy@v1
         with:
-          node-version: '18'
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
 
-      - name: Install Project Piper CLI
-        run: npm install -g @sap-piper/piper
+          # ✅ SAME PACKAGE NAME AS BEFORE
+          package-id: CPIPracticeflows
 
-      - name: Deploy iFlows using Piper
-        run: |
-          for DIR in cpi-artifacts/CPIPracticeflows/*/ ; do
-            IFLW_NAME=$(basename "$DIR")
-            echo "Deploying $IFLW_NAME"
+          # ✅ POINT TO THE PACKAGE FOLDER
+          dir-artifacts-relative: cpi-artifacts/CPIPracticeflows
 
-            piper cpiUploadIntegrationArtifact \
-              --host "${{ secrets.CPI_HOST }}" \
-              --tokenUrl "${{ secrets.CPI_TOKEN_URL }}" \
-              --clientId "${{ secrets.CPI_CLIENT_ID }}" \
-              --clientSecret "${{ secrets.CPI_CLIENT_SECRET }}" \
-              --integrationFlowId "$IFLW_NAME" \
-              --packageId "CPIPracticeflows" \
-              --filePath "$DIR"
-          done
+          # ✅ Update existing flows
+          deploy-policy: UPDATE
