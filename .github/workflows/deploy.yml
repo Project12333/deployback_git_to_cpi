@@ -1,0 +1,32 @@
+name: Deploy CPI Artifacts Back to CPI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    container:
+      image: engswee/flashpipe:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy CPI artifacts using FlashPipe
+        uses: engswee/flashpipe-action/deploy@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+
+          # Package to deploy
+          package-id: CPIPracticeflows
+
+          # Folder where the structured package is located
+          dir-artifacts-relative: cpi-artifacts/CPIPracticeflows
+
+          # Create new package if missing, otherwise update
+          deploy-policy: CREATE_OR_UPDATE
