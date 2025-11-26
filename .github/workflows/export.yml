@@ -29,24 +29,29 @@ jobs:
           git-commit-msg: "Exported from CPI"
           sync-package-details: true
 
-      # 3️⃣ Create deployment-ready folder structure
+      # 3️⃣ Create deployment-ready folder structure (✅ FIXED)
       - name: Prepare structured folder
         run: |
           mkdir -p cpi-artifacts/CPIPracticeflows
-          shopt -s extglob
-          mv cpi-artifacts/!(CPIPracticeflows|*.json) cpi-artifacts/CPIPracticeflows/ || true
+
+          # Move all directories except CPIPracticeflows into the package folder
+          for item in cpi-artifacts/*; do
+            if [ -d "$item" ] && [ "$(basename "$item")" != "CPIPracticeflows" ]; then
+              mv "$item" cpi-artifacts/CPIPracticeflows/
+            fi
+          done
 
           # Create package.json if missing
           if [ ! -f cpi-artifacts/CPIPracticeflows/package.json ]; then
             cat << EOF > cpi-artifacts/CPIPracticeflows/package.json
-          {
-            "Name": "CPIPracticeflows",
-            "Id": "CPIPracticeflows",
-            "Description": "Auto-generated from CPI export",
-            "ShortText": "CPIPracticeflows",
-            "Version": "1.0.0"
-          }
-          EOF
+{
+  "Name": "CPIPracticeflows",
+  "Id": "CPIPracticeflows",
+  "Description": "Auto-generated from CPI export",
+  "ShortText": "CPIPracticeflows",
+  "Version": "1.0.0"
+}
+EOF
           fi
 
       # 4️⃣ Save changes back to Git
