@@ -26,7 +26,6 @@ jobs:
             ZIPFILE="${ARTIFACT}.zip"
 
             echo "Zipping $ARTIFACT -> $ZIPFILE"
-
             zip -r "$ZIPFILE" "$ARTIFACT"
           done
 
@@ -58,13 +57,14 @@ jobs:
           for zipfile in *.zip; do
             ARTIFACT="${zipfile%.zip}"
 
-            # ✅ Use correct version from manifest
+            # ✅ Version from manifest (JSONtoXML_messagemapping = 1.0.1)
             VERSION="1.0.1"
 
             echo "Uploading $ARTIFACT (Version $VERSION)"
 
+            # ✅ ✅ CORRECT CLOUD INTEGRATION URL
             HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
-              -X PUT "https://$HOST/api/v1/IntegrationDesigntimeArtifacts(Id='$ARTIFACT',Version='$VERSION',ArtifactType='IntegrationFlow')/$value" \
+              -X PUT "https://$HOST/api/v1/IntegrationDesigntimeArtifacts?Id=$ARTIFACT&Version=$VERSION&ArtifactType=IntegrationFlow" \
               -H "Content-Type: application/zip" \
               -H "X-CSRF-Token: $TOKEN" \
               -H "Cookie: $COOKIE" \
