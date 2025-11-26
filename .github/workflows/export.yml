@@ -23,7 +23,6 @@ jobs:
           oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
           oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-
           package-id: CPIPracticeflows
           dir-artifacts-relative: cpi-artifacts
           git-commit-msg: "Exported from CPI"
