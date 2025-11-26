@@ -1,0 +1,41 @@
+name: Deploy All CPI Packages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    container:
+      image: engswee/flashpipe:latest
+
+    strategy:
+      matrix:
+        package:
+          - CPIPracticeflows
+          - deploycheck
+          - package3
+          - package4
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update package
+        uses: engswee/flashpipe-action/update/package@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+          package-file-relative: cpi-artifacts/${{ matrix.package }}/${{ matrix.package }}.json
+
+      - name: Sync artifacts
+        uses: engswee/flashpipe-action/sync@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+          package-id: ${{ matrix.package }}
+          target: tenant
+          dir-artifacts-relative: cpi-artifacts/${{ matrix.package }}
