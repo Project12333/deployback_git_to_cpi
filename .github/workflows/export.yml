@@ -11,11 +11,9 @@ jobs:
       image: engswee/flashpipe:latest
 
     steps:
-      # 1️⃣ Pull Repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Export CPI → Git (flat format)
       - name: Export CPI artifacts
         uses: engswee/flashpipe-action/sync@v1
         with:
@@ -28,12 +26,11 @@ jobs:
           git-commit-msg: "Exported from CPI"
           sync-package-details: true
 
-      # 3️⃣ Create deployment-ready folder structure (✅ FIXED)
       - name: Prepare structured folder
         run: |
           mkdir -p cpi-artifacts/CPIPracticeflows
 
-          # Move all directories except CPIPracticeflows into the package folder
+          # Move all directories except CPIPracticeflows
           for item in cpi-artifacts/*; do
             if [ -d "$item" ] && [ "$(basename "$item")" != "CPIPracticeflows" ]; then
               mv "$item" cpi-artifacts/CPIPracticeflows/
@@ -53,7 +50,6 @@ jobs:
 EOF
           fi
 
-      # 4️⃣ Save changes back to Git
       - name: Commit structured export
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
