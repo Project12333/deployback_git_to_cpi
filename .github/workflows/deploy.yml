@@ -1,3 +1,36 @@
+name: Deploy CPI Artifacts Back to CPI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ✅ Step 1: Build ZIPs from folders
+      - name: Build ZIPs from folders
+        run: |
+          PACKAGE="CPIPracticeflows"
+          BASE_DIR="cpi-artifacts/$PACKAGE"
+
+          echo "Building ZIPs from folders in $BASE_DIR"
+
+          cd "$BASE_DIR"
+
+          for dir in */ ; do
+            ARTIFACT="${dir%/}"
+            ZIPFILE="${ARTIFACT}.zip"
+
+            echo "Zipping $ARTIFACT -> $ZIPFILE"
+
+            zip -r "$ZIPFILE" "$ARTIFACT"
+          done
+
+      # ✅ Step 2: Upload & Deploy to CPI
       - name: Upload & Deploy to CPI
         run: |
           PACKAGE="CPIPracticeflows"
@@ -24,7 +57,7 @@
 
           for zipfile in *.zip; do
             ARTIFACT="${zipfile%.zip}"
-            
+
             # ✅ Use correct version from manifest
             VERSION="1.0.1"
 
