@@ -1,7 +1,0 @@
-{
-  "Name": "gittocpideployedflows",
-  "Id": "gittocpideployedflows",
-  "Description": "Package deployed from GitHub Actions",
-  "ShortText": "gittocpideployedflows",
-  "Version": "1.0.0"
-}
