@@ -1,35 +1,3 @@
-name: Build & Deploy CPI Artifacts
-
-on:
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build ZIPs from folders
-        run: |
-          PACKAGE="CPIPracticeflows"
-          BASE_DIR="cpi-artifacts/$PACKAGE"
-
-          echo "Building ZIPs from folders in $BASE_DIR"
-
-          cd "$BASE_DIR"
-
-          for dir in */ ; do
-            ARTIFACT="${dir%/}"
-            ZIPFILE="${ARTIFACT}.zip"
-
-            echo "Zipping $ARTIFACT -> $ZIPFILE"
-
-            # Create ZIP
-            zip -r "$ZIPFILE" "$ARTIFACT"
-          done
-
       - name: Upload & Deploy to CPI
         run: |
           PACKAGE="CPIPracticeflows"
@@ -39,7 +7,18 @@ jobs:
 
           BASE_DIR="cpi-artifacts/$PACKAGE"
 
-          echo "Deploying to CPI Host: $HOST"
+          echo "Fetching CSRF token..."
+
+          CSRF_RESPONSE=$(curl -i -s \
+            -X GET "https://$HOST/api/v1/" \
+            -H "X-CSRF-Token: Fetch" \
+            -u "$USER:$PASS")
+
+          TOKEN=$(echo "$CSRF_RESPONSE" | grep -i "X-CSRF-Token:" | awk '{print $2}' | tr -d '\r')
+          COOKIE=$(echo "$CSRF_RESPONSE" | grep -i "Set-Cookie:" | awk -F': ' '{print $2}' | tr -d '\r')
+
+          echo "CSRF Token: $TOKEN"
+          echo "Cookie: $COOKIE"
 
           cd "$BASE_DIR"
 
@@ -52,13 +31,14 @@ jobs:
             HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
               -X PUT "https://$HOST/api/v1/IntegrationDesigntimeArtifacts(Id='$ARTIFACT',Version='$VERSION',Type='IFlow')/\$value" \
               -H "Content-Type: application/zip" \
+              -H "X-CSRF-Token: $TOKEN" \
+              -H "Cookie: $COOKIE" \
               --data-binary "@$zipfile" \
               -u "$USER:$PASS")
 
             echo "HTTP $HTTP_CODE"
             cat /tmp/resp.txt || true
 
-            # Stop pipeline on failure
             if [ "$HTTP_CODE" -ge 400 ]; then
               echo "Upload failed for $ARTIFACT"
               exit 1
@@ -69,6 +49,8 @@ jobs:
             DEPLOY_CODE=$(curl -s -o /tmp/resp2.txt -w "%{http_code}" \
               -X POST "https://$HOST/api/v1/IntegrationRuntimeArtifacts" \
               -H "Content-Type: application/json" \
+              -H "X-CSRF-Token: $TOKEN" \
+              -H "Cookie: $COOKIE" \
               -d "{\"Id\":\"$ARTIFACT\",\"Version\":\"$VERSION\",\"PackageId\":\"$PACKAGE\"}" \
               -u "$USER:$PASS")
 
