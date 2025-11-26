@@ -1,37 +1,59 @@
-name: Sync CPI Artifacts to GitHub
- 
+name: Export CPI Artifacts in Structured Format
+
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "30 14 * * *" # optional daily run
- 
+
 jobs:
-  sync:
+  export:
     runs-on: ubuntu-latest
- 
+
     container:
       image: engswee/flashpipe:latest
- 
+
     steps:
+      # 1️⃣ Pull Repo
       - name: Checkout repository
         uses: actions/checkout@v4
- 
-      - name: Sync CPI artifacts using FlashPipe
+
+      # 2️⃣ Export CPI → Git (flat format)
+      - name: Export CPI artifacts
         uses: engswee/flashpipe-action/sync@v1
         with:
           tmn-host: ${{ secrets.DEV_TMN_HOST }}
           oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
           oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
- 
-          # IMPORTANT: You must provide your package ID here
-          package-id: CPIPracticeflows     
- 
-          # folder where artifacts will be saved inside repo
+
+          package-id: CPIPracticeflows
           dir-artifacts-relative: cpi-artifacts
- 
-          # Commit message
-          git-commit-msg: "Automated sync from CPI tenant"
- 
-          # Optional but recommended
+          git-commit-msg: "Exported from CPI"
           sync-package-details: true
+
+      # 3️⃣ Create deployment-ready folder structure
+      - name: Prepare structured folder
+        run: |
+          mkdir -p cpi-artifacts/CPIPracticeflows
+          shopt -s extglob
+          mv cpi-artifacts/!(CPIPracticeflows|*.json) cpi-artifacts/CPIPracticeflows/ || true
+
+          # Create package.json if missing
+          if [ ! -f cpi-artifacts/CPIPracticeflows/package.json ]; then
+            cat << EOF > cpi-artifacts/CPIPracticeflows/package.json
+          {
+            "Name": "CPIPracticeflows",
+            "Id": "CPIPracticeflows",
+            "Description": "Auto-generated from CPI export",
+            "ShortText": "CPIPracticeflows",
+            "Version": "1.0.0"
+          }
+          EOF
+          fi
+
+      # 4️⃣ Save changes back to Git
+      - name: Commit structured export
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git commit -m "Structured CPI export" || echo "No changes to commit"
+          git push
