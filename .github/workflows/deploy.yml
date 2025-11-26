@@ -1,4 +1,4 @@
-name: Deploy CPI Artifacts Back to CPI
+name: Deploy CPI Artifacts to CPI
 
 on:
   workflow_dispatch:
@@ -7,79 +7,25 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    container:
+      image: ppiper/cx-server-companion:latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build ZIPs from folders
+      - name: Deploy iFlows using Project Piper
         run: |
-          PACKAGE="CPIPracticeflows"
-          BASE_DIR="cpi-artifacts/$PACKAGE"
+          for DIR in cpi-artifacts/CPIPracticeflows/*/ ; do
+            IFLW_NAME=$(basename "$DIR")
+            echo "Deploying $IFLW_NAME"
 
-          cd "$BASE_DIR"
-
-          for dir in */ ; do
-            ARTIFACT="${dir%/}"
-            ZIPFILE="${ARTIFACT}.zip"
-            zip -r "$ZIPFILE" "$ARTIFACT"
-          done
-
-      - name: Upload & Deploy to CPI (POST + application/zip)
-        run: |
-          PACKAGE="CPIPracticeflows"
-          HOST="${{ secrets.CPI_HOST }}"
-          USER="${{ secrets.CPI_USER }}"
-          PASS="${{ secrets.CPI_PASSWORD }}"
-
-          BASE_DIR="cpi-artifacts/$PACKAGE"
-
-          CSRF_RESPONSE=$(curl -i -s \
-            -X GET "https://$HOST/api/v1/" \
-            -H "X-CSRF-Token: Fetch" \
-            -u "$USER:$PASS")
-
-          TOKEN=$(echo "$CSRF_RESPONSE" | grep -i "X-CSRF-Token:" | awk '{print $2}' | tr -d '\r')
-          COOKIE=$(echo "$CSRF_RESPONSE" | grep -i "__Host-csrf-client-id" | awk -F': ' '{print $2}' | tr -d '\r' | awk -F';' '{print $1}')
-
-          cd "$BASE_DIR"
-
-          for zipfile in *.zip; do
-            ARTIFACT="${zipfile%.zip}"
-            VERSION="1.0.1"
-
-            echo "Uploading $ARTIFACT (Version $VERSION)"
-
-            HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
-              -X POST "https://$HOST/api/v1/IntegrationDesigntimeArtifacts(Id='$ARTIFACT',Version='$VERSION')/\$value" \
-              -H "Content-Type: application/zip" \
-              -H "X-CSRF-Token: $TOKEN" \
-              -H "Cookie: $COOKIE" \
-              --data-binary "@$zipfile" \
-              -u "$USER:$PASS")
-
-            echo "Upload HTTP $HTTP_CODE"
-            cat /tmp/resp.txt || true
-
-            if [ "$HTTP_CODE" -ge 400 ]; then
-              echo "Upload failed for $ARTIFACT"
-              exit 1
-            fi
-
-            DEPLOY_CODE=$(curl -s -o /tmp/resp2.txt -w "%{http_code}" \
-              -X POST "https://$HOST/api/v1/IntegrationRuntimeArtifacts" \
-              -H "Content-Type: application/json" \
-              -H "X-CSRF-Token: $TOKEN" \
-              -H "Cookie: $COOKIE" \
-              -d "{\"Id\":\"$ARTIFACT\",\"Version\":\"$VERSION\",\"PackageId\":\"$PACKAGE\"}" \
-              -u "$USER:$PASS")
-
-            echo "Deploy HTTP $DEPLOY_CODE"
-            cat /tmp/resp2.txt || true
-
-            if [ "$DEPLOY_CODE" -ge 400 ]; then
-              echo "Deployment failed for $ARTIFACT"
-              exit 1
-            fi
-
-            echo "$ARTIFACT deployed ✅"
+            piper cpiDeployIntegrationArtifact \
+              --host "${{ secrets.CPI_HOST}}" \
+              --tokenUrl "${{ secrets.DEV_OAUTH_HOST }}" \
+              --clientId "${{ secrets.DEV_CLIENT_ID }}" \
+              --clientSecret "${{ secrets.DEV_CLIENT_SECRET }}" \
+              --integrationFlowId "$IFLW_NAME" \
+              --packageId "CPIPracticeflows" \
+              --filePath "$DIR"
           done
