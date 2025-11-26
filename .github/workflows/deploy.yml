@@ -11,21 +11,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy iFlows using SAP Project Piper
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Project Piper CLI
+        run: npm install -g @sap-piper/piper
+
+      - name: Deploy iFlows using Piper
         run: |
           for DIR in cpi-artifacts/CPIPracticeflows/*/ ; do
             IFLW_NAME=$(basename "$DIR")
             echo "Deploying $IFLW_NAME"
 
-            docker run --rm \
-              -v "$PWD":/workspace \
-              ppiper/jenkins-library \
-              piper cpiUploadIntegrationArtifact \
-                --host "${{ secrets.CPI_HOST }}" \
-                --tokenUrl "${{ secrets.CPI_TOKEN_URL }}" \
-                --clientId "${{ secrets.CPI_CLIENT_ID }}" \
-                --clientSecret "${{ secrets.CPI_CLIENT_SECRET }}" \
-                --integrationFlowId "$IFLW_NAME" \
-                --packageId "CPIPracticeflows" \
-                --filePath "/workspace/$DIR"
+            piper cpiUploadIntegrationArtifact \
+              --host "${{ secrets.CPI_HOST }}" \
+              --tokenUrl "${{ secrets.CPI_TOKEN_URL }}" \
+              --clientId "${{ secrets.CPI_CLIENT_ID }}" \
+              --clientSecret "${{ secrets.CPI_CLIENT_SECRET }}" \
+              --integrationFlowId "$IFLW_NAME" \
+              --packageId "CPIPracticeflows" \
+              --filePath "$DIR"
           done
