@@ -1,0 +1,42 @@
+name: Restructure CPI Artifacts
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restructure:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restructure folders
+        run: |
+          mkdir -p cpi-artifacts/CPIPracticeflows
+
+          for item in cpi-artifacts/*; do
+            if [ -d "$item" ] && [ "$(basename "$item")" != "CPIPracticeflows" ]; then
+              mv "$item" cpi-artifacts/CPIPracticeflows/
+            fi
+          done
+
+          if [ ! -f cpi-artifacts/CPIPracticeflows/package.json ]; then
+            echo '{
+              "Name": "CPIPracticeflows",
+              "Id": "CPIPracticeflows",
+              "Description": "Re-deployed from GitHub",
+              "ShortText": "CPIPracticeflows",
+              "Version": "1.0.0"
+            }' > cpi-artifacts/CPIPracticeflows/package.json
+          fi
+
+      - name: Commit restructure
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git commit -m "Restructured for deployment" || echo "No changes"
+          git push
