@@ -7,9 +7,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    container:
-      image: ppiper/cx-server-companion:latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,12 +17,15 @@ jobs:
             IFLW_NAME=$(basename "$DIR")
             echo "Deploying $IFLW_NAME"
 
-            piper cpiDeployIntegrationArtifact \
-              --host "${{ secrets.CPI_HOST}}" \
-              --tokenUrl "${{ secrets.DEV_OAUTH_HOST }}" \
-              --clientId "${{ secrets.DEV_CLIENT_ID }}" \
-              --clientSecret "${{ secrets.DEV_CLIENT_SECRET }}" \
-              --integrationFlowId "$IFLW_NAME" \
-              --packageId "CPIPracticeflows" \
-              --filePath "$DIR"
+            docker run --rm \
+              -v "$PWD":/workspace \
+              ppiper/cx-server-companion:latest \
+              piper cpiDeployIntegrationArtifact \
+                --host "${{ secrets.CPI_HOST }}" \
+                --tokenUrl "${{ secrets.CPI_TOKEN_URL }}" \
+                --clientId "${{ secrets.CPI_CLIENT_ID }}" \
+                --clientSecret "${{ secrets.CPI_CLIENT_SECRET }}" \
+                --integrationFlowId "$IFLW_NAME" \
+                --packageId "CPIPracticeflows" \
+                --filePath "/workspace/$DIR"
           done
