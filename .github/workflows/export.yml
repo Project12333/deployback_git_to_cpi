@@ -1,4 +1,4 @@
-name: Sync Multiple CPI Packages
+name: Export CPI Packages
 
 on:
   workflow_dispatch:
