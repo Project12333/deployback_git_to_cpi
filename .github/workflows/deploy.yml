@@ -11,26 +11,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ✅ Step 1: Build ZIPs from folders
       - name: Build ZIPs from folders
         run: |
           PACKAGE="CPIPracticeflows"
           BASE_DIR="cpi-artifacts/$PACKAGE"
-
-          echo "Building ZIPs from folders in $BASE_DIR"
 
           cd "$BASE_DIR"
 
           for dir in */ ; do
             ARTIFACT="${dir%/}"
             ZIPFILE="${ARTIFACT}.zip"
-
-            echo "Zipping $ARTIFACT -> $ZIPFILE"
             zip -r "$ZIPFILE" "$ARTIFACT"
           done
 
-      # ✅ Step 2: Upload & Deploy to CPI (POST + multipart ✅)
-      - name: Upload & Deploy to CPI
+      - name: Upload & Deploy to CPI (PUT + application/zip)
         run: |
           PACKAGE="CPIPracticeflows"
           HOST="${{ secrets.CPI_HOST }}"
@@ -39,50 +33,32 @@ jobs:
 
           BASE_DIR="cpi-artifacts/$PACKAGE"
 
-          echo "Fetching CSRF token..."
-
           CSRF_RESPONSE=$(curl -i -s \
             -X GET "https://$HOST/api/v1/" \
             -H "X-CSRF-Token: Fetch" \
             -u "$USER:$PASS")
 
           TOKEN=$(echo "$CSRF_RESPONSE" | grep -i "X-CSRF-Token:" | awk '{print $2}' | tr -d '\r')
-          COOKIE=$(echo "$CSRF_RESPONSE" | grep -i "Set-Cookie:" | awk -F': ' '{print $2}' | tr -d '\r')
-
-          echo "CSRF Token: $TOKEN"
-          echo "Cookie: $COOKIE"
+          COOKIE=$(echo "$CSRF_RESPONSE" | grep -i "__Host-csrf-client-id" | awk -F': ' '{print $2}' | tr -d '\r' | awk -F';' '{print $1}')
 
           cd "$BASE_DIR"
 
           for zipfile in *.zip; do
             ARTIFACT="${zipfile%.zip}"
-
-            # ✅ Version from manifest
             VERSION="1.0.1"
 
-            echo "Uploading $ARTIFACT (Version $VERSION)"
-
-            # ✅ ✅ CORRECT CLOUD INTEGRATION UPLOAD (POST + multipart/form-data)
             HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
-              -X POST "https://$HOST/api/v1/IntegrationDesigntimeArtifacts" \
+              -X PUT "https://$HOST/api/v1/IntegrationDesigntimeArtifacts(Id='$ARTIFACT',Version='$VERSION',Type='IntegrationFlow')/\$value" \
+              -H "Content-Type: application/zip" \
               -H "X-CSRF-Token: $TOKEN" \
               -H "Cookie: $COOKIE" \
-              -F "Id=$ARTIFACT" \
-              -F "Name=$ARTIFACT" \
-              -F "ArtifactType=IntegrationFlow" \
-              -F "Version=$VERSION" \
-              -F "file=@$zipfile" \
+              --data-binary "@$zipfile" \
               -u "$USER:$PASS")
 
-            echo "HTTP $HTTP_CODE"
-            cat /tmp/resp.txt || true
-
             if [ "$HTTP_CODE" -ge 400 ]; then
-              echo "Upload failed for $ARTIFACT"
+              cat /tmp/resp.txt || true
               exit 1
             fi
-
-            echo "Triggering deployment of $ARTIFACT"
 
             DEPLOY_CODE=$(curl -s -o /tmp/resp2.txt -w "%{http_code}" \
               -X POST "https://$HOST/api/v1/IntegrationRuntimeArtifacts" \
@@ -92,13 +68,10 @@ jobs:
               -d "{\"Id\":\"$ARTIFACT\",\"Version\":\"$VERSION\",\"PackageId\":\"$PACKAGE\"}" \
               -u "$USER:$PASS")
 
-            echo "Deploy HTTP $DEPLOY_CODE"
-            cat /tmp/resp2.txt || true
-
             if [ "$DEPLOY_CODE" -ge 400 ]; then
-              echo "Deployment failed for $ARTIFACT"
+              cat /tmp/resp2.txt || true
               exit 1
             fi
 
-            echo "$ARTIFACT deployed successfully ✅"
+            echo "$ARTIFACT deployed"
           done
