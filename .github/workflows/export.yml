@@ -11,13 +11,9 @@ jobs:
       image: engswee/flashpipe:latest
 
     steps:
-      # 1️⃣ Pull Repo with full Git history
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      # 2️⃣ Export CPI → Git (flat format)
       - name: Export CPI artifacts
         uses: engswee/flashpipe-action/sync@v1
         with:
@@ -30,19 +26,16 @@ jobs:
           git-commit-msg: "Exported from CPI"
           sync-package-details: true
 
-      # 3️⃣ Create deployment-ready folder structure
       - name: Prepare structured folder
         run: |
           mkdir -p cpi-artifacts/CPIPracticeflows
 
-          # Move all directories except CPIPracticeflows into the package folder
           for item in cpi-artifacts/*; do
             if [ -d "$item" ] && [ "$(basename "$item")" != "CPIPracticeflows" ]; then
               mv "$item" cpi-artifacts/CPIPracticeflows/
             fi
           done
 
-          # Create package.json if missing
           if [ ! -f cpi-artifacts/CPIPracticeflows/package.json ]; then
             echo '{' > cpi-artifacts/CPIPracticeflows/package.json
             echo '  "Name": "CPIPracticeflows",' >> cpi-artifacts/CPIPracticeflows/package.json
@@ -52,12 +45,3 @@ jobs:
             echo '  "Version": "1.0.0"' >> cpi-artifacts/CPIPracticeflows/package.json
             echo '}' >> cpi-artifacts/CPIPracticeflows/package.json
           fi
-
-      # 4️⃣ Save changes back to Git
-      - name: Commit structured export
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add .
-          git commit -m "Structured CPI export" || echo "No changes to commit"
-          git push
