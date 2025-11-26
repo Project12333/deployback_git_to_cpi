@@ -13,9 +13,8 @@ jobs:
       matrix:
         package:
           - CPIPracticeflows
+          - cicdcheck1
           - deploycheck
-          - package3
-          - package4
 
     steps:
       - uses: actions/checkout@v4
