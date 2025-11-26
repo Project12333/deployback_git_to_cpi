@@ -19,7 +19,7 @@ jobs:
 
             docker run --rm \
               -v "$PWD":/workspace \
-              ghcr.io/sap/jenkins-library:piper \
+              ppiper/jenkins-library \
               piper cpiUploadIntegrationArtifact \
                 --host "${{ secrets.CPI_HOST }}" \
                 --tokenUrl "${{ secrets.CPI_TOKEN_URL }}" \
