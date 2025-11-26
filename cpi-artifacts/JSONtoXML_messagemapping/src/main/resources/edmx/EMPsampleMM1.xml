@@ -1,0 +1,9 @@
+<root>
+	<employee>
+        <id>101</id>
+        <Fname>John</Fname>
+        <Lname>Doe</Lname>
+        <salary>1000</salary>
+        <gender>F</gender>
+    </employee>
+</root>
