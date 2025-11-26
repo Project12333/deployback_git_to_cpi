@@ -1,10 +1,10 @@
-name: Deploy CPI Package & Artifacts
+name: Deploy CPI Artifact
 
 on:
   workflow_dispatch:
     inputs:
-      packages:
-        description: "Enter package IDs (comma or space separated)"
+      artifact:
+        description: "Enter artifact ID (example: gmail)"
         required: true
 
 jobs:
@@ -15,20 +15,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Normalize package list
-        id: normalize
-        run: |
-          RAW="${{ github.event.inputs.packages }}"
-          CLEANED=$(echo "$RAW" | tr ',' ' ')
-          echo "packages=$CLEANED" >> $GITHUB_OUTPUT
-
-      - name: Upload Package & Deploy Artifacts
+      - name: Deploy Artifact to CPI
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
+          ART="${{ github.event.inputs.artifact }}"
+          echo "🚀 Deploying artifact: $ART"
+
           docker run --rm \
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
@@ -36,31 +32,14 @@ jobs:
             -e OAUTH_HOST="$OAUTH_HOST" \
             -e CLIENT_ID="$CLIENT_ID" \
             -e CLIENT_SECRET="$CLIENT_SECRET" \
-            engswee/flashpipe:1.9.0 \
-            sh -c '
-              for PKG in ${{ steps.normalize.outputs.packages }}; do
-                echo "📦 Uploading package: $PKG"
+            engswee/flashpipe:latest \
+            flashpipe deploy \
+              --tmn-host "$TMN_HOST" \
+              --oauth-host "$OAUTH_HOST" \
+              --oauth-clientid "$CLIENT_ID" \
+              --oauth-clientsecret "$CLIENT_SECRET" \
+              --artifact-ids "$ART" \
+              --dir-artifacts "cpi-artifacts/$ART/$ART"
 
-                flashpipe package-upload \
-                  --tmn-host "$TMN_HOST" \
-                  --oauth-host "$OAUTH_HOST" \
-                  --oauth-clientid "$CLIENT_ID" \
-                  --oauth-clientsecret "$CLIENT_SECRET" \
-                  --package-id "$PKG" \
-                  --package-file "cpi-artifacts/$PKG/${PKG}.json"
-
-                echo "🚀 Deploying artifact gmail into package $PKG"
-
-                flashpipe deploy \
-                  --tmn-host "$TMN_HOST" \
-                  --oauth-host "$OAUTH_HOST" \
-                  --oauth-clientid "$CLIENT_ID" \
-                  --oauth-clientsecret "$CLIENT_SECRET" \
-                  --package-id "$PKG" \
-                  --artifact-ids gmail \
-                  --dir-artifacts "cpi-artifacts/$PKG/gmail"
-              done
-            '
-
-      - name: Deployment Completed
+      - name: ✅ Deployment Completed
         run: echo "✅ Deployment finished successfully!"
