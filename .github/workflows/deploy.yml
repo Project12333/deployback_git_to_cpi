@@ -29,7 +29,7 @@ jobs:
             zip -r "$ZIPFILE" "$ARTIFACT"
           done
 
-      # ✅ Step 2: Upload & Deploy to CPI
+      # ✅ Step 2: Upload & Deploy to CPI (POST + multipart ✅)
       - name: Upload & Deploy to CPI
         run: |
           PACKAGE="CPIPracticeflows"
@@ -57,18 +57,21 @@ jobs:
           for zipfile in *.zip; do
             ARTIFACT="${zipfile%.zip}"
 
-            # ✅ Version from manifest (JSONtoXML_messagemapping = 1.0.1)
+            # ✅ Version from manifest
             VERSION="1.0.1"
 
             echo "Uploading $ARTIFACT (Version $VERSION)"
 
-            # ✅ ✅ CORRECT CLOUD INTEGRATION URL
+            # ✅ ✅ CORRECT CLOUD INTEGRATION UPLOAD (POST + multipart/form-data)
             HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
-              -X PUT "https://$HOST/api/v1/IntegrationDesigntimeArtifacts?Id=$ARTIFACT&Version=$VERSION&ArtifactType=IntegrationFlow" \
-              -H "Content-Type: application/zip" \
+              -X POST "https://$HOST/api/v1/IntegrationDesigntimeArtifacts" \
               -H "X-CSRF-Token: $TOKEN" \
               -H "Cookie: $COOKIE" \
-              --data-binary "@$zipfile" \
+              -F "Id=$ARTIFACT" \
+              -F "Name=$ARTIFACT" \
+              -F "ArtifactType=IntegrationFlow" \
+              -F "Version=$VERSION" \
+              -F "file=@$zipfile" \
               -u "$USER:$PASS")
 
             echo "HTTP $HTTP_CODE"
