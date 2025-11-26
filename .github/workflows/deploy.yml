@@ -1,4 +1,4 @@
-name: Deploy CPI Artifacts Back to CPI
+name: Build & Deploy CPI Artifacts
 
 on:
   workflow_dispatch:
@@ -11,20 +11,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Upload artifacts to CPI
+      - name: Build ZIPs from folders
+        run: |
+          PACKAGE="CPIPracticeflows"
+          BASE_DIR="cpi-artifacts/$PACKAGE"
+
+          echo "Building ZIPs from folders in $BASE_DIR"
+
+          cd "$BASE_DIR"
+
+          for dir in */ ; do
+            ARTIFACT="${dir%/}"
+            ZIPFILE="${ARTIFACT}.zip"
+
+            echo "Zipping $ARTIFACT -> $ZIPFILE"
+
+            # Create ZIP
+            zip -r "$ZIPFILE" "$ARTIFACT"
+          done
+
+      - name: Upload & Deploy to CPI
         run: |
           PACKAGE="CPIPracticeflows"
           HOST="${{ secrets.CPI_HOST }}"
           USER="${{ secrets.CPI_USER }}"
           PASS="${{ secrets.CPI_PASSWORD }}"
-          
-          echo "Using host: $HOST"
 
-          cd cpi-artifacts/CPIPracticeflows
-          
+          BASE_DIR="cpi-artifacts/$PACKAGE"
+
+          echo "Deploying to CPI Host: $HOST"
+
+          cd "$BASE_DIR"
+
           for zipfile in *.zip; do
             ARTIFACT="${zipfile%.zip}"
             VERSION="1.0.0"
+
             echo "Uploading $ARTIFACT"
 
             HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
@@ -36,8 +58,27 @@ jobs:
             echo "HTTP $HTTP_CODE"
             cat /tmp/resp.txt || true
 
+            # Stop pipeline on failure
             if [ "$HTTP_CODE" -ge 400 ]; then
               echo "Upload failed for $ARTIFACT"
               exit 1
             fi
+
+            echo "Triggering deployment of $ARTIFACT"
+
+            DEPLOY_CODE=$(curl -s -o /tmp/resp2.txt -w "%{http_code}" \
+              -X POST "https://$HOST/api/v1/IntegrationRuntimeArtifacts" \
+              -H "Content-Type: application/json" \
+              -d "{\"Id\":\"$ARTIFACT\",\"Version\":\"$VERSION\",\"PackageId\":\"$PACKAGE\"}" \
+              -u "$USER:$PASS")
+
+            echo "Deploy HTTP $DEPLOY_CODE"
+            cat /tmp/resp2.txt || true
+
+            if [ "$DEPLOY_CODE" -ge 400 ]; then
+              echo "Deployment failed for $ARTIFACT"
+              exit 1
+            fi
+
+            echo "$ARTIFACT deployed successfully ✅"
           done
