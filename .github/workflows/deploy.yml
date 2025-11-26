@@ -24,7 +24,7 @@ jobs:
             zip -r "$ZIPFILE" "$ARTIFACT"
           done
 
-      - name: Upload & Deploy to CPI (PUT + application/zip)
+      - name: Upload & Deploy to CPI (POST + application/zip)
         run: |
           PACKAGE="CPIPracticeflows"
           HOST="${{ secrets.CPI_HOST }}"
@@ -45,15 +45,12 @@ jobs:
 
           for zipfile in *.zip; do
             ARTIFACT="${zipfile%.zip}"
-
-            # ✅ Version from manifest
             VERSION="1.0.1"
 
             echo "Uploading $ARTIFACT (Version $VERSION)"
 
-            # ✅ ✅ CORRECT CLOUD INTEGRATION UPLOAD
             HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
-              -X PUT "https://$HOST/api/v1/IntegrationDesigntimeArtifacts(Id='$ARTIFACT',Version='$VERSION')/\$value" \
+              -X POST "https://$HOST/api/v1/IntegrationDesigntimeArtifacts(Id='$ARTIFACT',Version='$VERSION')/\$value" \
               -H "Content-Type: application/zip" \
               -H "X-CSRF-Token: $TOKEN" \
               -H "Cookie: $COOKIE" \
@@ -67,8 +64,6 @@ jobs:
               echo "Upload failed for $ARTIFACT"
               exit 1
             fi
-
-            echo "Triggering deployment of $ARTIFACT"
 
             DEPLOY_CODE=$(curl -s -o /tmp/resp2.txt -w "%{http_code}" \
               -X POST "https://$HOST/api/v1/IntegrationRuntimeArtifacts" \
