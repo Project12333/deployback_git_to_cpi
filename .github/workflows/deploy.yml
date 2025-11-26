@@ -11,7 +11,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy iFlows using Project Piper
+      - name: Deploy iFlows using SAP Project Piper
         run: |
           for DIR in cpi-artifacts/CPIPracticeflows/*/ ; do
             IFLW_NAME=$(basename "$DIR")
@@ -19,8 +19,8 @@ jobs:
 
             docker run --rm \
               -v "$PWD":/workspace \
-              ppiper/piper \
-              piper cpiDeployIntegrationArtifact \
+              ghcr.io/sap/jenkins-library:piper \
+              piper cpiUploadIntegrationArtifact \
                 --host "${{ secrets.CPI_HOST }}" \
                 --tokenUrl "${{ secrets.CPI_TOKEN_URL }}" \
                 --clientId "${{ secrets.CPI_CLIENT_ID }}" \
