@@ -1,4 +1,4 @@
-name: Deploy CPI Package and Artifacts
+name: Deploy CPI Artifacts Back to CPI
 
 on:
   workflow_dispatch:
@@ -14,24 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create Package in CPI (if missing)
-        run: |
-          PACKAGE_NAME="CPIPracticeflows"
-          DESC="Re-deployed from GitHub"
-          SHORTTEXT="CPIPracticeflows"
-
-          curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "https://${{ secrets.DEV_TMN_HOST }}/api/v1/IntegrationPackages" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"Name\": \"$PACKAGE_NAME\",
-              \"Id\": \"$PACKAGE_NAME\",
-              \"Description\": \"$DESC\",
-              \"ShortText\": \"$SHORTTEXT\"
-            }" \
-            -u "${{ secrets.DEV_USERID }}:${{ secrets.DEV_PASSWORD }}" | grep -E "200|201|409"
-
-      - name: Upload Artifacts into Package
+      - name: Upload artifacts to CPI (creates package if missing)
         run: |
           PACKAGE="CPIPracticeflows"
 
@@ -50,7 +33,7 @@ jobs:
               --artifact-dir "$dir"
           done
 
-      - name: Deploy Artifacts
+      - name: Deploy artifacts
         run: |
           flashpipe \
             --tmn-host "${{ secrets.DEV_TMN_HOST }}" \
