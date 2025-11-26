@@ -47,7 +47,7 @@ jobs:
       - name: Assign artifacts to package
         run: |
           PACKAGE="CPIPracticeflows"
-          HOST="${{ secrets.DEV_TMN_HOST }}"
+          HOST="${{ secrets.CPI_HOST }}"
           USER="${{ secrets.CPI_USER }}"
           PASS="${{ secrets.CPI_PASSWORD }}"
 
@@ -65,7 +65,7 @@ jobs:
       # 5️⃣ Deploy each artifact (Runtime API)
       - name: Deploy artifacts
         run: |
-          HOST="${{ secrets.DEV_TMN_HOST }}"
+          HOST="${{ secrets.CPI_HOST }}"
           USER="${{ secrets.CPI_USER }}"
           PASS="${{ secrets.CPI_PASSWORD }}"
 
