@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p cpi-artifacts/CPIPracticeflows
 
-          # Move all directories except CPIPracticeflows
+          # Move all directories except CPIPracticeflows into the package folder
           for item in cpi-artifacts/*; do
             if [ -d "$item" ] && [ "$(basename "$item")" != "CPIPracticeflows" ]; then
               mv "$item" cpi-artifacts/CPIPracticeflows/
@@ -39,15 +39,13 @@ jobs:
 
           # Create package.json if missing
           if [ ! -f cpi-artifacts/CPIPracticeflows/package.json ]; then
-            cat << EOF > cpi-artifacts/CPIPracticeflows/package.json
-{
-  "Name": "CPIPracticeflows",
-  "Id": "CPIPracticeflows",
-  "Description": "Auto-generated from CPI export",
-  "ShortText": "CPIPracticeflows",
-  "Version": "1.0.0"
-}
-EOF
+            echo '{' > cpi-artifacts/CPIPracticeflows/package.json
+            echo '  "Name": "CPIPracticeflows",' >> cpi-artifacts/CPIPracticeflows/package.json
+            echo '  "Id": "CPIPracticeflows",' >> cpi-artifacts/CPIPracticeflows/package.json
+            echo '  "Description": "Auto-generated from CPI export",' >> cpi-artifacts/CPIPracticeflows/package.json
+            echo '  "ShortText": "CPIPracticeflows",' >> cpi-artifacts/CPIPracticeflows/package.json
+            echo '  "Version": "1.0.0"' >> cpi-artifacts/CPIPracticeflows/package.json
+            echo '}' >> cpi-artifacts/CPIPracticeflows/package.json
           fi
 
       - name: Commit structured export
