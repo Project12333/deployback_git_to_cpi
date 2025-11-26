@@ -1,45 +1,57 @@
-name: Deploy CPI Artifact
-
+name: Sync FlashPipe Demo Package Artifacts to Tenant
+ 
 on:
-  workflow_dispatch:
-    inputs:
-      artifact:
-        description: "Enter artifact ID (example: gmail)"
-        required: true
 
+  workflow_dispatch:
+ 
 jobs:
-  deploy:
+
+  sync:
+
     runs-on: ubuntu-latest
 
+    container:
+
+      image: engswee/flashpipe:latest
+ 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Deploy Artifact to CPI
-        env:
-          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
-          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
-          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
-        run: |
-          ART="${{ github.event.inputs.artifact }}"
-          echo "🚀 Deploying artifact: $ART"
+      - uses: actions/checkout@v4
+ 
+      - name: 'Sync package to remote'
 
-          docker run --rm \
-            -v "${GITHUB_WORKSPACE}:/workspace" \
-            -w /workspace \
-            -e TMN_HOST="$TMN_HOST" \
-            -e OAUTH_HOST="$OAUTH_HOST" \
-            -e CLIENT_ID="$CLIENT_ID" \
-            -e CLIENT_SECRET="$CLIENT_SECRET" \
-            engswee/flashpipe:latest \
-            flashpipe deploy \
-              --tmn-host "$TMN_HOST" \
-              --oauth-host "$OAUTH_HOST" \
-              --oauth-clientid "$CLIENT_ID" \
-              --oauth-clientsecret "$CLIENT_SECRET" \
-              --artifact-ids "$ART" \
-              --dir-artifacts "cpi-artifacts/$ART/$ART"
+        uses: engswee/flashpipe-action/update/package@v1
 
-      - name: ✅ Deployment Completed
-        run: echo "✅ Deployment finished successfully!"
+        with:
+
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+
+          package-file-relative: cpi-artifacts/Demo/Demo.json
+ 
+      - name: 'Sync FlashPipeDemo artifacts'
+
+        uses: engswee/flashpipe-action/sync@v1
+
+        with:
+
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+
+          package-id: CPIPracticeflows
+
+          target: tenant
+
+          dir-artifacts-relative: cpi-artifacts/Demo
+
+ 
