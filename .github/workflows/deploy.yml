@@ -1,4 +1,4 @@
-name: Build & Deploy CPI Artifacts
+name: Deploy CPI Artifacts Back to CPI
 
 on:
   workflow_dispatch:
@@ -11,6 +11,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ✅ Step 1: Build ZIPs from folders
       - name: Build ZIPs from folders
         run: |
           PACKAGE="CPIPracticeflows"
@@ -29,6 +30,7 @@ jobs:
             zip -r "$ZIPFILE" "$ARTIFACT"
           done
 
+      # ✅ Step 2: Upload & Deploy to CPI
       - name: Upload & Deploy to CPI
         run: |
           PACKAGE="CPIPracticeflows"
@@ -54,4 +56,44 @@ jobs:
           cd "$BASE_DIR"
 
           for zipfile in *.zip; do
-            ARTIFACT=
+            ARTIFACT="${zipfile%.zip}"
+            VERSION="1.0.0"
+
+            echo "Uploading $ARTIFACT"
+
+            HTTP_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
+              -X PUT "https://$HOST/api/v1/IntegrationDesigntimeArtifacts(Id='$ARTIFACT',Version='$VERSION',Type='IFlow')/\$value" \
+              -H "Content-Type: application/zip" \
+              -H "X-CSRF-Token: $TOKEN" \
+              -H "Cookie: $COOKIE" \
+              --data-binary "@$zipfile" \
+              -u "$USER:$PASS")
+
+            echo "HTTP $HTTP_CODE"
+            cat /tmp/resp.txt || true
+
+            if [ "$HTTP_CODE" -ge 400 ]; then
+              echo "Upload failed for $ARTIFACT"
+              exit 1
+            fi
+
+            echo "Triggering deployment of $ARTIFACT"
+
+            DEPLOY_CODE=$(curl -s -o /tmp/resp2.txt -w "%{http_code}" \
+              -X POST "https://$HOST/api/v1/IntegrationRuntimeArtifacts" \
+              -H "Content-Type: application/json" \
+              -H "X-CSRF-Token: $TOKEN" \
+              -H "Cookie: $COOKIE" \
+              -d "{\"Id\":\"$ARTIFACT\",\"Version\":\"$VERSION\",\"PackageId\":\"$PACKAGE\"}" \
+              -u "$USER:$PASS")
+
+            echo "Deploy HTTP $DEPLOY_CODE"
+            cat /tmp/resp2.txt || true
+
+            if [ "$DEPLOY_CODE" -ge 400 ]; then
+              echo "Deployment failed for $ARTIFACT"
+              exit 1
+            fi
+
+            echo "$ARTIFACT deployed successfully ✅"
+          done
