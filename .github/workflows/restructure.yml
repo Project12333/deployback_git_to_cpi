@@ -9,7 +9,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-      uses: actions/checkout@v4
+        uses: actions/checkout@v4
 
       - name: Restructure folders
         run: |
@@ -27,7 +27,7 @@ jobs:
               echo "✅ Moved artifact gmail to cpi-artifacts/gmail/gmail"
             fi
 
-            # Remove gmailsender folder
+            # (Optional) Remove gmailsender folder if empty or no longer needed
             rm -rf cpi-artifacts/gmailsender
             echo "🗑️ Removed old gmailsender folder"
           else
@@ -41,3 +41,6 @@ jobs:
           git add .
           git commit -m "Restructured artifacts for FlashPipe deployment" || echo "No changes to commit"
           git push || true
+
+      - name: ✅ Done
+        run: echo "✅ Restructure completed successfully!"
