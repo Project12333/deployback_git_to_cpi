@@ -22,7 +22,7 @@ jobs:
           CLEANED=$(echo "$RAW" | tr ',' ' ')
           echo "packages=$CLEANED" >> $GITHUB_OUTPUT
 
-      - name: Deploy packages to CPI
+      - name: Deploy artifacts to CPI
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
@@ -39,14 +39,18 @@ jobs:
             engswee/flashpipe:latest \
             sh -c '
               for PKG in ${{ steps.normalize.outputs.packages }}; do
-                echo "🚀 Deploying $PKG..."
-                flashpipe deploy \
-                  --tmn-host "$TMN_HOST" \
-                  --oauth-host "$OAUTH_HOST" \
-                  --oauth-clientid "$CLIENT_ID" \
-                  --oauth-clientsecret "$CLIENT_SECRET" \
-                  --package-id "$PKG" \
-                  --dir-artifacts "cpi-artifacts/$PKG"
+                echo "🚀 Deploying artifacts in package: $PKG"
+                for ART in $(ls cpi-artifacts/$PKG); do
+                  if [ -d "cpi-artifacts/$PKG/$ART" ]; then
+                    echo "➡ Deploying artifact: $ART"
+                    flashpipe deploy \
+                      --tmn-host "$TMN_HOST" \
+                      --oauth-host "$OAUTH_HOST" \
+                      --oauth-clientid "$CLIENT_ID" \
+                      --oauth-clientsecret "$CLIENT_SECRET" \
+                      --artifact-ids "$ART"
+                  fi
+                done
               done
             '
 
