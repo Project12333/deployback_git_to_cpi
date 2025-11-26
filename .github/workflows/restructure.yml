@@ -8,35 +8,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout repository
+      uses: actions/checkout@v4
 
       - name: Restructure folders
         run: |
-          mkdir -p cpi-artifacts/CPIPracticeflows
+          echo "📦 Restructuring gmailsender → gmail"
 
-          for item in cpi-artifacts/*; do
-            if [ -d "$item" ] && [ "$(basename "$item")" != "CPIPracticeflows" ]; then
-              mv "$item" cpi-artifacts/CPIPracticeflows/
+          # Ensure gmailsender folder exists
+          if [ -d "cpi-artifacts/gmailsender" ]; then
+
+            # Create target folder if missing
+            mkdir -p cpi-artifacts/gmail
+
+            # Move gmail artifact
+            if [ -d "cpi-artifacts/gmailsender/gmail" ]; then
+              mv cpi-artifacts/gmailsender/gmail cpi-artifacts/gmail/
+              echo "✅ Moved artifact gmail to cpi-artifacts/gmail/gmail"
             fi
-          done
 
-          if [ ! -f cpi-artifacts/CPIPracticeflows/package.json ]; then
-            echo '{
-              "Name": "CPIPracticeflows",
-              "Id": "CPIPracticeflows",
-              "Description": "Re-deployed from GitHub",
-              "ShortText": "CPIPracticeflows",
-              "Version": "1.0.0"
-            }' > cpi-artifacts/CPIPracticeflows/package.json
+            # Remove gmailsender folder
+            rm -rf cpi-artifacts/gmailsender
+            echo "🗑️ Removed old gmailsender folder"
+          else
+            echo "⚠️ gmailsender folder does not exist. Nothing to restructure."
           fi
 
-      - name: Commit restructure
+      - name: Commit & Push changes
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
           git add .
-          git commit -m "Restructured for deployment" || echo "No changes"
-          git push
+          git commit -m "Restructured artifacts for FlashPipe deployment" || echo "No changes to commit"
+          git push || true
