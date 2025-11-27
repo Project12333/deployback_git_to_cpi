@@ -6,36 +6,73 @@ on:
       - 'cpi-artifacts/**'
   workflow_dispatch:
 
+permissions:
+  contents: write   # required so the workflow can push changes
+
 jobs:
   update-dropdown:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Get package list
+      - name: Build package list
         id: packages
         run: |
-          packages=$(ls -1 cpi-artifacts | tr '\n' ' ')
+          # list only directories (ignore files)
+          packages=$(find cpi-artifacts -maxdepth 1 -type d -printf '%f\n' | tail -n +2 | tr '\n' ' ')
+          echo "found packages: $packages"
           echo "packages=$packages" >> $GITHUB_OUTPUT
 
-      - name: Update deploy workflow
+      - name: Update deploy.yml options line
         run: |
-          arr=(${{ steps.packages.outputs.packages }})
-          options=""
+          packages="${{ steps.packages.outputs.packages }}"
+          if [ -z "$packages" ]; then
+            echo "No packages found under cpi-artifacts; leaving deploy.yml untouched."
+            exit 0
+          fi
+          # Build JSON-like options array: ["A","B","C"]
+          arr=($packages)
+          opts=""
           for pkg in "${arr[@]}"; do
-            options="$options\"$pkg\", "
+            # escape double quotes if any (folder names should not have quotes)
+            pkg_escaped=$(printf '%s' "$pkg" | sed 's/"/\\"/g')
+            opts="$opts\"$pkg_escaped\", "
           done
-          options="[${options%, }]"
-          sed -i "s|^options:.*|options: $options|" .github/workflows/deploy.yml
+          opts="[${opts%, }]"
+          echo "New options: $opts"
+
+          # Replace any line starting with options: with our new options.
+          # Use a temp file to be safe.
+          repo_file=".github/workflows/deploy.yml"
+          if [ ! -f "$repo_file" ]; then
+            echo "deploy.yml not found at $repo_file"
+            exit 1
+          fi
+
+          # Place a backup
+          cp "$repo_file" "${repo_file}.bak"
+
+          # Replace the line beginning with optional spaces then options:
+          sed -E "s|^([[:space:]]*)options:.*|options: $opts|" "$repo_file" > "${repo_file}.tmp" && mv "${repo_file}.tmp" "$repo_file"
+
+          echo "deploy.yml updated. Showing head:"
+          sed -n '1,40p' "$repo_file"
 
       - name: Commit and push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/workflows/deploy.yml
-          if git commit -m "Auto-update package dropdown"; then
-            git push origin HEAD
-          else
-            echo "No changes to commit"
+          if git diff --cached --quiet; then
+            echo "No changes to deploy.yml"
+            exit 0
           fi
+          git commit -m "Auto-update package dropdown"
+          # use GITHUB_TOKEN to push
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
