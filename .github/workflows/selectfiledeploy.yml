@@ -22,10 +22,10 @@ jobs:
       - name: Validate package folder exists
         run: |
           if [ ! -d "cpi-artifacts/${{ github.event.inputs.package }}" ]; then
-            echo "Package folder not found: cpi-artifacts/${{ github.event.inputs.package }}"
+            echo "❌ Package folder does not exist: cpi-artifacts/${{ github.event.inputs.package }}"
             exit 1
           fi
-          echo "Found package folder: cpi-artifacts/${{ github.event.inputs.package }}"
+          echo "✅ Package found: ${{ github.event.inputs.package }}"
 
       - name: Update package
         uses: engswee/flashpipe-action/update/package@v1
