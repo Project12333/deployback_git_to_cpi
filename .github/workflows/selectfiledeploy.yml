@@ -7,7 +7,7 @@ on:
         description: "Select the CPI package to deploy"
         required: true
         type: choice
-        # ✅ AUTO-FILLED. DO NOT EDIT MANUALLY
+        # AUTO-FILLED. DO NOT EDIT MANUALLY
         options: []
 
 jobs:
@@ -18,6 +18,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate package folder exists
+        run: |
+          if [ ! -d "cpi-artifacts/${{ github.event.inputs.package }}" ]; then
+            echo "Package folder not found: cpi-artifacts/${{ github.event.inputs.package }}"
+            exit 1
+          fi
+          echo "Found package folder: cpi-artifacts/${{ github.event.inputs.package }}"
 
       - name: Update package
         uses: engswee/flashpipe-action/update/package@v1
