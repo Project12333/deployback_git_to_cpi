@@ -1,0 +1,37 @@
+name: Auto-Update CPI Package Dropdown
+
+on:
+  push:
+    paths:
+      - 'cpi-artifacts/**'
+  workflow_dispatch:
+
+jobs:
+  update-dropdown:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ✅ Scan all package folders
+      - name: Get package list
+        id: packages
+        run: |
+          packages=$(ls -d cpi-artifacts/*/ | xargs -n 1 basename)
+          echo "packages=$packages" >> $GITHUB_OUTPUT
+
+      # ✅ Update deploy.yml dropdown
+      - name: Update deploy workflow
+        run: |
+          options=$(echo "${{ steps.packages.outputs.packages }}" | sed 's/ /", "/g')
+          options="          options: [\"$options\"]"
+          sed -i 's|options: \[.*\]|'"$options"'|' .github/workflows/deploy.yml
+
+      # ✅ Commit changes
+      - name: Commit and push changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .github/workflows/deploy.yml
+          git commit -m "Auto-update package dropdown"
+          git push
