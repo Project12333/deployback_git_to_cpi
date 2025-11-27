@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Mail-ReaderPOC
 Bundle-SymbolicName: CPI-Mail-Reader_3; singleton:=true
-Bundle-Version: 1.0.6
+Bundle-Version: 1.0.7
 SAP-BundleType: IntegrationFlow
 SAP-NodeType: IFLMAP
 SAP-RuntimeProfile: iflmap
