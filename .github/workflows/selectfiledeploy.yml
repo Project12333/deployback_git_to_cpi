@@ -7,8 +7,9 @@ on:
         description: "Select the CPI package to deploy"
         required: true
         type: choice
-        # AUTO-FILLED. DO NOT EDIT MANUALLY
-        options: []
+        options:
+          - CPIPracticeflows
+          - deploycheck
 
 jobs:
   deploy:
@@ -19,30 +20,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate package folder exists
-        run: |
-          if [ ! -d "cpi-artifacts/${{ github.event.inputs.package }}" ]; then
-            echo "❌ Package folder does not exist: cpi-artifacts/${{ github.event.inputs.package }}"
-            exit 1
-          fi
-          echo "✅ Package found: ${{ github.event.inputs.package }}"
-
-      - name: Update package
+      #####################################################
+      # ✅ PACKAGE: CPIPracticeflows
+      #####################################################
+      - name: 'Update CPIPracticeflows'
+        if: ${{ github.event.inputs.package == 'CPIPracticeflows' }}
         uses: engswee/flashpipe-action/update/package@v1
         with:
           tmn-host: ${{ secrets.DEV_TMN_HOST }}
           oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
           oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-file-relative: cpi-artifacts/${{ github.event.inputs.package }}/${{ github.event.inputs.package }}.json
+          package-file-relative: cpi-artifacts/CPIPracticeflows/CPIPracticeflows.json
 
-      - name: Deploy artifacts
+      - name: 'Deploy CPIPracticeflows artifacts'
+        if: ${{ github.event.inputs.package == 'CPIPracticeflows' }}
         uses: engswee/flashpipe-action/sync@v1
         with:
           tmn-host: ${{ secrets.DEV_TMN_HOST }}
           oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
           oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-id: ${{ github.event.inputs.package }}
+          package-id: CPIPracticeflows
           target: tenant
-          dir-artifacts-relative: cpi-artifacts/${{ github.event.inputs.package }}
+          dir-artifacts-relative: cpi-artifacts/CPIPracticeflows
+
+      #####################################################
+      # ✅ PACKAGE: deploycheck
+      #####################################################
+      - name: 'Update deploycheck'
+        if: ${{ github.event.inputs.package == 'deploycheck' }}
+        uses: engswee/flashpipe-action/update/package@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+          package-file-relative: cpi-artifacts/deploycheck/deploycheck.json
+
+      - name: 'Deploy deploycheck artifacts'
+        if: ${{ github.event.inputs.package == 'deploycheck' }}
+        uses: engswee/flashpipe-action/sync@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+          package-id: deploycheck
+          target: tenant
+          dir-artifacts-relative: cpi-artifacts/deploycheck
