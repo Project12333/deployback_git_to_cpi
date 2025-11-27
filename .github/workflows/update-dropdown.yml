@@ -13,19 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ✅ Scan all package folders
+      # ✅ Scan all package folders safely
       - name: Get package list
         id: packages
         run: |
-          packages=$(ls -d cpi-artifacts/*/ | xargs -n 1 basename)
+          packages=$(ls -1 cpi-artifacts | tr '\n' ' ')
           echo "packages=$packages" >> $GITHUB_OUTPUT
 
-      # ✅ Update deploy.yml dropdown
+      # ✅ Update dropdown options in deploy.yml
       - name: Update deploy workflow
         run: |
-          options=$(echo "${{ steps.packages.outputs.packages }}" | sed 's/ /", "/g')
-          options="          options: [\"$options\"]"
-          sed -i 's|options: \[.*\]|'"$options"'|' .github/workflows/deploy.yml
+          arr=(${{ steps.packages.outputs.packages }})
+          options=""
+          for pkg in "${arr[@]}"; do
+            options="$options\"$pkg\", "
+          done
+          options="[${options%, }]"
+          sed -i "s|options: \[.*\]|options: $options|" .github/workflows/deploy.yml
 
       # ✅ Commit changes
       - name: Commit and push changes
@@ -33,5 +37,8 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add .github/workflows/deploy.yml
-          git commit -m "Auto-update package dropdown"
-          git push
+          if git commit -m "Auto-update package dropdown"; then
+            git push
+          else
+            echo "No changes to commit"
+          fi
