@@ -540,6 +540,9 @@
     </bpmn2:process>
     <bpmndi:BPMNDiagram id="BPMNDiagram_1" name="Default Collaboration Diagram">
         <bpmndi:BPMNPlane bpmnElement="Collaboration_1" id="BPMNPlane_1">
+            <bpmndi:BPMNShape bpmnElement="CallActivity_33462159" id="BPMNShape_CallActivity_33462159">
+                <dc:Bounds height="60.0" width="100.0" x="561.0" y="128.0"/>
+            </bpmndi:BPMNShape>
             <bpmndi:BPMNShape bpmnElement="EndEvent_2" id="BPMNShape_EndEvent_2">
                 <dc:Bounds height="32.0" width="32.0" x="703.0" y="142.0"/>
             </bpmndi:BPMNShape>
@@ -557,9 +560,6 @@
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape bpmnElement="CallActivity_33462155" id="BPMNShape_CallActivity_33462155">
                 <dc:Bounds height="60.0" width="100.0" x="412.0" y="132.0"/>
-            </bpmndi:BPMNShape>
-            <bpmndi:BPMNShape bpmnElement="CallActivity_33462159" id="BPMNShape_CallActivity_33462159">
-                <dc:Bounds height="60.0" width="100.0" x="561.0" y="128.0"/>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNEdge bpmnElement="SequenceFlow_33462156" id="BPMNEdge_SequenceFlow_33462156" sourceElement="BPMNShape_CallActivity_33462155" targetElement="BPMNShape_EndEvent_2">
                 <di:waypoint x="462.0" xsi:type="dc:Point" y="160.0"/>
