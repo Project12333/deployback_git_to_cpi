@@ -1,86 +1,110 @@
-name: Sync All CPI Packages (Dynamic - FINAL ATTEMPT)
+name:  Single-Click Restore ALL Package Histories
+ 
 on:
-  workflow_dispatch:
+# This triggers the workflow with a single click and requires no manual inputs.
+workflow_dispatch:
+ 
 jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install Dependencies for CPI API Calls
-        run: |
-          # Install jq (JSON processor) on the GitHub Runner
-          sudo apt-get update
-          sudo apt-get install -y jq curl
-      - name: Dynamic Fetch and Normalize Package List
-        id: normalize
-        env:
-          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
-          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
-          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
-        run: |
-          echo "🔑 Generating OAuth Token via cURL..."
-          TOKEN_URL="https://$OAUTH_HOST/oauth/token"
-          # 1. Fetch the OAuth Token using the Runner's curl/jq
-          AUTH_RESPONSE=$(curl -s -X POST "$TOKEN_URL" \
-            -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET")
-          # Use jq for reliable JSON parsing
-          TOKEN=$(echo "$AUTH_RESPONSE" | jq -r ".access_token")
-          if [ "$TOKEN" == "null" ] || [ -z "$TOKEN" ]; then
-            echo "::error::Failed to retrieve access token."
-            echo "Raw Auth Response: $AUTH_RESPONSE"
-            exit 1
-          fi
-          # 2. Fetch the Package List
-          echo "🔍 Fetching package list from tenant..."
-          API_URL="https://$TMN_HOST/api/v1/IntegrationPackages?\$format=json"
-          PACKAGE_RESPONSE=$(curl -s -X GET "$API_URL" \
-            -H "Authorization: Bearer $TOKEN")
-          # Use jq to get all 'Id' values and join them with spaces
-          PACKAGE_IDS=$(echo "$PACKAGE_RESPONSE" | jq -r ".d.results[].Id" | tr '\n' ' ')
-          if [ -z "$PACKAGE_IDS" ]; then
-            echo "::warning::No packages found or API call failed. Check permissions."
-            exit 0
-          fi
-          echo "✅ Found packages: $PACKAGE_IDS"
-          # Set the output variable for the next step to use
-          echo "packages=$PACKAGE_IDS" >> $GITHUB_OUTPUT
-      - name: Run FlashPipe inside Docker (Sync Packages)
-        env:
-          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
-          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
-          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
-        run: |
-          docker run --rm \
-            --user $(id -u):$(id -g) \
-            -v "${GITHUB_WORKSPACE}:/workspace" \
-            -w /workspace \
-            -e TMN_HOST="$TMN_HOST" \
-            -e OAUTH_HOST="$OAUTH_HOST" \
-            -e CLIENT_ID="$CLIENT_ID" \
-            -e CLIENT_SECRET="$CLIENT_SECRET" \
-            engswee/flashpipe:latest \
-            sh -c '
-              # Loop over the dynamically retrieved list
-              for PKG in ${{ steps.normalize.outputs.packages }}; do
-                echo "➡ Syncing $PKG..."
-                flashpipe sync \
-                  --tmn-host "$TMN_HOST" \
-                  --oauth-host "$OAUTH_HOST" \
-                  --oauth-clientid "$CLIENT_ID" \
-                  --oauth-clientsecret "$CLIENT_SECRET" \
-                  --package-id "$PKG" \
-                  --dir-artifacts "cpi-artifacts/$PKG" \
-                  --sync-package-details
-              done
-            '
-      - name: Commit & push
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add .
-          git commit -m "Automated CPI package sync (dynamic list via API)" || echo "No changes"
-          git push || true
+mass_restore:
+runs-on: ubuntu-latest
+container:
+image: engswee/flashpipe:latest
+ 
+steps:
+- name: Checkout repository (Full History)
+uses: actions/checkout@v4
+with:
+# Crucial: fetch all history for git log
+fetch-depth: 0
+persist-credentials: true
+ 
+- name: Configure Git Safe Directory
+run: |
+# Resolves the 'dubious ownership' error inside the container environment.
+git config --global --add safe.directory /__w/trail1/trail1
+git config --global --add safe.directory "$GITHUB_WORKSPACE"
+ 
+- name: Discover ALL Packages for Restoration
+id: discovery
+run: |
+# Finds all subdirectories immediately under cpi-artifacts/ and lists them separated by spaces.
+PKGS_TO_RESTORE=$(find cpi-artifacts -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | tr '\n' ' ')
+ 
+if [ -z "$PKGS_TO_RESTORE" ]; then
+echo "::warning::No package directories found in cpi-artifacts. Nothing to restore."
+exit 0
+fi
+ 
+echo "✅ Packages identified for mass restoration: $PKGS_TO_RESTORE"
+# Pass the space-separated list of IDs to the next step
+echo "packages=$PKGS_TO_RESTORE" >> $GITHUB_OUTPUT
+ 
+- name: Execute Sequential Deployment for ALL Packages
+env:
+TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+ALL_PKGS: ${{ steps.discovery.outputs.packages }}
+COMMIT_MESSAGE: "Sync all the versions" # Your specific commit message
+ 
+run: |
+EXIT_CODE=0
+ 
+# Outer loop: Iterate over every package found in the repository
+for PKG_ID in $ALL_PKGS; do
+echo "=========================================================="
+echo "STARTING HISTORY RESTORATION FOR PACKAGE: $PKG_ID"
+ 
+PACKAGE_DIR="cpi-artifacts/$PKG_ID"
+ 
+# 1. Find the historical commits for THIS specific package
+COMMITS_LIST=$(git log --pretty=format:'%H' --reverse --grep "$COMMIT_MESSAGE" -- "$PACKAGE_DIR" | tr '\n' ' ')
+ 
+if [ -z "$COMMITS_LIST" ]; then
+echo "::warning::No historical commits found for '$PKG_ID' matching the message '$COMMIT_MESSAGE'. Skipping package."
+continue
+fi
+ 
+echo "   Found sequential commits: $COMMITS_LIST"
+ 
+# Inner loop: Deploy each historical commit in order (oldest to newest)
+for COMMIT_HASH in $COMMITS_LIST; do
+echo "   ➡ Deploying Hash $COMMIT_HASH content as new CPI version."
+ 
+# a. Restore the historical files from the commit into the working directory
+# Note: We must use the 'git checkout <hash> -- <path>' syntax for safety
+git checkout $COMMIT_HASH -- "$PACKAGE_DIR"
+ 
+if [ ! -d "$PACKAGE_DIR" ]; then
+echo "::error::Package directory $PACKAGE_DIR not found in commit $COMMIT_HASH. Something is wrong with the history. Aborting this package."
+break
+fi
+ 
+# b. Deployment using FlashPipe
+flashpipe sync \
+--tmn-host "$TMN_HOST" \
+--oauth-host "$OAUTH_HOST" \
+--oauth-clientid "$CLIENT_ID" \
+--oauth-clientsecret "$CLIENT_SECRET" \
+--package-id "$PKG_ID" \
+--dir-artifacts "$PACKAGE_DIR" \
+--sync-package-details \
+--target "tenant"
+ 
+if [ $? -ne 0 ]; then
+echo "::error::Deployment FAILED for hash $COMMIT_HASH on package $PKG_ID. Stopping history restoration for this package."
+EXIT_CODE=1
+break
+fi
+ 
+# c. Clean up the checkout before the next loop iteration
+# Revert the directory back to the main branch's HEAD state
+git checkout HEAD -- "$PACKAGE_DIR"
+echo "   ✅ SUCCESS: Content deployed as next CPI version."
+done
+ 
+echo "COMPLETED HISTORY RESTORATION FOR PACKAGE: $PKG_ID"
+done
+ 
+exit $EXIT_CODE
