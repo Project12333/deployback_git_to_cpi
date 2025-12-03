@@ -1,0 +1,86 @@
+name: Sync All CPI Packages (Dynamic - FINAL ATTEMPT)
+on:
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Dependencies for CPI API Calls
+        run: |
+          # Install jq (JSON processor) on the GitHub Runner
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+      - name: Dynamic Fetch and Normalize Package List
+        id: normalize
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+        run: |
+          echo "🔑 Generating OAuth Token via cURL..."
+          TOKEN_URL="https://$OAUTH_HOST/oauth/token"
+          # 1. Fetch the OAuth Token using the Runner's curl/jq
+          AUTH_RESPONSE=$(curl -s -X POST "$TOKEN_URL" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET")
+          # Use jq for reliable JSON parsing
+          TOKEN=$(echo "$AUTH_RESPONSE" | jq -r ".access_token")
+          if [ "$TOKEN" == "null" ] || [ -z "$TOKEN" ]; then
+            echo "::error::Failed to retrieve access token."
+            echo "Raw Auth Response: $AUTH_RESPONSE"
+            exit 1
+          fi
+          # 2. Fetch the Package List
+          echo "🔍 Fetching package list from tenant..."
+          API_URL="https://$TMN_HOST/api/v1/IntegrationPackages?\$format=json"
+          PACKAGE_RESPONSE=$(curl -s -X GET "$API_URL" \
+            -H "Authorization: Bearer $TOKEN")
+          # Use jq to get all 'Id' values and join them with spaces
+          PACKAGE_IDS=$(echo "$PACKAGE_RESPONSE" | jq -r ".d.results[].Id" | tr '\n' ' ')
+          if [ -z "$PACKAGE_IDS" ]; then
+            echo "::warning::No packages found or API call failed. Check permissions."
+            exit 0
+          fi
+          echo "✅ Found packages: $PACKAGE_IDS"
+          # Set the output variable for the next step to use
+          echo "packages=$PACKAGE_IDS" >> $GITHUB_OUTPUT
+      - name: Run FlashPipe inside Docker (Sync Packages)
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+        run: |
+          docker run --rm \
+            --user $(id -u):$(id -g) \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            -e TMN_HOST="$TMN_HOST" \
+            -e OAUTH_HOST="$OAUTH_HOST" \
+            -e CLIENT_ID="$CLIENT_ID" \
+            -e CLIENT_SECRET="$CLIENT_SECRET" \
+            engswee/flashpipe:latest \
+            sh -c '
+              # Loop over the dynamically retrieved list
+              for PKG in ${{ steps.normalize.outputs.packages }}; do
+                echo "➡ Syncing $PKG..."
+                flashpipe sync \
+                  --tmn-host "$TMN_HOST" \
+                  --oauth-host "$OAUTH_HOST" \
+                  --oauth-clientid "$CLIENT_ID" \
+                  --oauth-clientsecret "$CLIENT_SECRET" \
+                  --package-id "$PKG" \
+                  --dir-artifacts "cpi-artifacts/$PKG" \
+                  --sync-package-details
+              done
+            '
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Automated CPI package sync (dynamic list via API)" || echo "No changes"
+          git push || true
