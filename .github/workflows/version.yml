@@ -46,7 +46,7 @@ OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
 CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
 CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
 ALL_PKGS: ${{ steps.discovery.outputs.packages }}
-COMMIT_MESSAGE: "Sync all the versions" # Your specific commit message
+COMMIT_MESSAGE: "Sync all the versions from cpi" # Your specific commit message
  
 run: |
 EXIT_CODE=0
