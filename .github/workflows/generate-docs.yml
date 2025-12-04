@@ -3,11 +3,11 @@ name: Auto-generate iFlow Documentation
 on:
   push:
     paths:
-      - 'CPIPracticeflows/**'
-      - 'EmailreceiverxlsxToXML/**'
-      - 'flow1/**'
-      - 'deploycheck/**'
-      - 'cicdcheck1/**'
+      - 'cpi-artifacts/CPIPracticeflows/**'
+      - 'cpi-artifacts/EmailreceiverxlsxToXML/**'
+      - 'cpi-artifacts/flow1/**'
+      - 'cpi-artifacts/deploycheck/**'
+      - 'cpi-artifacts/cicdcheck1/**'
 
 jobs:
   generate-doc:
