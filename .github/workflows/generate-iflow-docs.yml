@@ -1,136 +1,62 @@
-name: Generate CPI iFlow Documentation (MD + DOCX)
+name: Generate CPI iFlow Docs
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  generate-docs:
+  doc:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      # ---------------------------------------------------------
-      # Detect changed .iflw files
-      # ---------------------------------------------------------
       - name: Detect changed .iflw files
         id: changed
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             files=$(git ls-files "src/main/resources/**/*.iflw")
           else
-            BEFORE="${{ github.event.before }}"
-            AFTER="${{ github.sha }}"
-            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              files=$(git ls-files "src/main/resources/**/*.iflw")
-            else
-              files=$(git diff --name-only "$BEFORE" "$AFTER" -- "src/main/resources/**/*.iflw")
-            fi
+            BEFORE=${{ github.event.before }}
+            AFTER=${{ github.sha }}
+            files=$(git diff --name-only "$BEFORE" "$AFTER" -- "src/main/resources/**/*.iflw")
           fi
+          files=$(echo "$files" | tr '\n' ' ')
+          echo "files=$files" >> $GITHUB_OUTPUT
 
-          files=$(echo "$files" | tr '\n' ',' | sed 's/,$//')
-          echo "files=$files" >> "$GITHUB_OUTPUT"
-
-      # ---------------------------------------------------------
-      # Install Ollama + Mistral
-      # ---------------------------------------------------------
       - name: Install Ollama
         if: steps.changed.outputs.files != ''
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Pull Mistral
+      - name: Pull model
         if: steps.changed.outputs.files != ''
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
           ollama pull mistral
 
-      # ---------------------------------------------------------
-      # Install Pandoc for DOCX output
-      # ---------------------------------------------------------
       - name: Install Pandoc
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc
 
-      # ---------------------------------------------------------
-      # Create Python script WITHOUT heredoc (SAFE!)
-      # ---------------------------------------------------------
-      - name: Create generator script
-        run: |
-          mkdir -p tools
-          echo "import sys" >> tools/gen.py
-          echo "import os" >> tools/gen.py
-          echo "import json" >> tools/gen.py
-          echo "import subprocess" >> tools/gen.py
-          echo "import xml.etree.ElementTree as ET" >> tools/gen.py
-          echo "from pathlib import Path" >> tools/gen.py
-
-          echo "def parse(path):" >> tools/gen.py
-          echo "    tree = ET.parse(path)" >> tools.gen.py
-          echo "    root = tree.getroot()" >> tools/gen.py
-          echo "    info = { 'flowname': Path(path).stem, 'adapters': [], 'scripts': [], 'mappings': [], 'exceptions': [], 'properties': [] }" >> tools/gen.py
-          echo "    for elem in root.iter():" >> tools/gen.py
-          echo "        tag = elem.tag.split('}')[-1].lower()" >> tools/gen.py
-          echo "        name = elem.attrib.get('name') or elem.attrib.get('id')" >> tools/gen.py
-          echo "        if 'adapter' in tag or 'sender' in tag or 'receiver' in tag:" >> tools/gen.py
-          echo "            info['adapters'].append(name)" >> tools/gen.py
-          echo "        if 'script' in tag:" >> tools/gen.py
-          echo "            info['scripts'].append(name)" >> tools/gen.py
-          echo "        if 'mapping' in tag:" >> tools/gen.py
-          echo "            info['mappings'].append(name)" >> tools/gen.py
-          echo "        if 'exception' in tag or 'error' in tag:" >> tools/gen.py
-          echo "            info['exceptions'].append(name)" >> tools/gen.py
-          echo "        if 'property' in tag or 'header' in tag:" >> tools/gen.py
-          echo "            info['properties'].append(name)" >> tools/gen.py
-          echo "    with open(path, 'r', errors='ignore') as f: info['xml'] = f.read(15000)" >> tools/gen.py
-          echo "    return info" >> tools/gen.py
-
-          echo "def prompt(summary):" >> tools/gen.py
-          echo "    return f'Generate CPI iFlow documentation in Markdown based on this summary: {json.dumps(summary)}'" >> tools/gen.py
-
-          echo "def run_llm(text):" >> tools/gen.py
-          echo "    cmd = f\"echo \\\"{text}\\\" | ollama run mistral\"" >> tools/gen.py
-          echo "    return subprocess.check_output(cmd, shell=True, text=True)" >> tools/gen.py
-
-          echo "def write_docs(path, md):" >> tools/gen.py
-          echo "    folder = Path(path).parent / 'docs'" >> tools/gen.py
-          echo "    folder.mkdir(exist_ok=True)" >> tools/gen.py
-          echo "    md_file = folder / f\"{Path(path).stem}_Documentation.md\"" >> tools/gen.py
-          echo "    docx_file = folder / f\"{Path(path).stem}_Documentation.docx\"" >> tools/gen.py
-          echo "    md_file.write_text(md, encoding='utf8')" >> tools/gen.py
-          echo "    subprocess.run(['pandoc', str(md_file), '-o', str(docx_file)])" >> tools/gen.py
-
-          echo "if __name__ == '__main__':" >> tools/gen.py
-          echo "    for f in sys.argv[1:]: write_docs(f, run_llm(prompt(parse(f))))" >> tools/gen.py
-
-      # ---------------------------------------------------------
-      # Run generator
-      # ---------------------------------------------------------
-      - name: Generate documentation
+      - name: Generate Docs
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
-          IFS=',' read -r -a arr <<< "${{ steps.changed.outputs.files }}"
-          python3 tools/gen.py "${arr[@]}"
+          python3 tools/generate_iflow_docs.py ${{ steps.changed.outputs.files }}
 
-      # ---------------------------------------------------------
-      # Commit generated docs
-      # ---------------------------------------------------------
-      - name: Commit docs
+      - name: Commit documents
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions@users.noreply.github.com"
@@ -139,5 +65,5 @@ jobs:
             echo "No changes"
             exit 0
           fi
-          git commit -m "Generated CPI iFlow Documentation (MD + DOCX)"
+          git commit -m "Auto-generated CPI iFlow Documentation"
           git push
