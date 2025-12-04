@@ -1,0 +1,1 @@
+    tree = ET.parse(path)
