@@ -1,30 +1,30 @@
 import os
 
-def find_iflow_file(iflow_dir):
-    """Locate the .iflw file inside the integrationflow folder."""
-    for root, _, files in os.walk(iflow_dir):
+def find_iflow_file(path):
+    for root, dirs, files in os.walk(path):
         for f in files:
-            if f.endswith(".iflw") or f.endswith(".iflow"):
+            if f.endswith(".iflw"):
                 return os.path.join(root, f)
     return None
 
 
-def read_iflow(iflow_dir):
-    iflow_file = find_iflow_file(iflow_dir)
+def read_iflow(path):
+    iflow_file = find_iflow_file(path)
 
     if iflow_file is None:
-        return {"id": "unknown", "name": os.path.basename(iflow_dir), "raw": ""}
+        return {
+            "id": os.path.basename(path),
+            "name": os.path.basename(path),
+            "raw": ""
+        }
 
     with open(iflow_file, "r", encoding="utf-8") as f:
         xml = f.read()
 
-    # Extract ID and name if possible
-    id = os.path.basename(iflow_dir)
-    name = id
+    id = os.path.basename(path)
 
     return {
         "id": id,
-        "name": name,
-        "path": iflow_file,
+        "name": id,
         "raw": xml
     }
