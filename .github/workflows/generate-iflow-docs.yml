@@ -22,19 +22,33 @@ jobs:
         with:
           python-version: "3.11"
 
+      # ---------------------------------------------------------
+      # Detect .iflw inside cpi-artifacts/**/integrationflow/
+      # ---------------------------------------------------------
       - name: Detect changed .iflw files
         id: changed
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            files=$(git ls-files "src/main/resources/**/*.iflw")
+            # Manual trigger → process ALL iflows
+            files=$(git ls-files "cpi-artifacts/**/src/main/resources/scenarioflows/integrationflow/*.iflw")
           else
             BEFORE=${{ github.event.before }}
             AFTER=${{ github.sha }}
-            files=$(git diff --name-only "$BEFORE" "$AFTER" -- "src/main/resources/**/*.iflw")
+
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              files=$(git ls-files "cpi-artifacts/**/src/main/resources/scenarioflows/integrationflow/*.iflw")
+            else
+              files=$(git diff --name-only "$BEFORE" "$AFTER" -- "cpi-artifacts/**/src/main/resources/scenarioflows/integrationflow/*.iflw")
+            fi
           fi
+
           files=$(echo "$files" | tr '\n' ' ')
           echo "files=$files" >> $GITHUB_OUTPUT
+          echo "Detected files: $files"
 
+      # ---------------------------------------------------------
+      # Install Ollama
+      # ---------------------------------------------------------
       - name: Install Ollama
         if: steps.changed.outputs.files != ''
         run: |
@@ -46,24 +60,36 @@ jobs:
           export PATH="$HOME/.ollama/bin:$PATH"
           ollama pull mistral
 
+      # ---------------------------------------------------------
+      # Install Pandoc
+      # ---------------------------------------------------------
       - name: Install Pandoc
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc
 
+      # ---------------------------------------------------------
+      # Run Documentation Generator
+      # ---------------------------------------------------------
       - name: Generate Docs
+        if: steps.changed.outputs.files != ''
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
           python3 tools/generate_iflow_docs.py ${{ steps.changed.outputs.files }}
 
+      # ---------------------------------------------------------
+      # Commit Documentation
+      # ---------------------------------------------------------
       - name: Commit documents
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions@users.noreply.github.com"
           git add -A
+
           if git diff --cached --quiet; then
             echo "No changes"
             exit 0
           fi
+
           git commit -m "Auto-generated CPI iFlow Documentation"
           git push
