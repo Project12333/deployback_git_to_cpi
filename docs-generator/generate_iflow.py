@@ -1,58 +1,24 @@
 import os
-from openai import OpenAI
+from parser import read_iflow
+from generator import generate_documentation
 
-MODEL = "gpt-4o-mini"
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+IFLOW_DIR = "CPIPracticeflows/democicd"   # change this for each flow
 
-def generate_documentation(iflow):
-    prompt = f"""
-You are an SAP CPI expert.
-Generate clean documentation for the below iFlow.
+def main():
+    print("Reading iFlow...")
+    data = read_iflow(IFLOW_DIR)
 
-### RAW IFLOW XML ###
-{iflow['raw']}
+    print("Generating documentation...")
+    md = generate_documentation(data)
 
-### OUTPUT FORMAT (Markdown) ###
-# {iflow['name']} ({iflow['id']})
+    out_dir = f"docs/{data['id']}"
+    os.makedirs(out_dir, exist_ok=True)
 
-## TL;DR
-Short summary.
+    with open(os.path.join(out_dir, "README.md"), "w", encoding="utf-8") as f:
+        f.write(md)
 
-## Overview
-Explain what the iFlow does.
+    print("Documentation generated:", out_dir + "/README.md")
 
-## Sender / Receiver Adapters
-Extract adapter types, protocols, endpoints.
 
-## Flow Steps
-Describe each step in sequence.
-
-## Message Mappings
-List mapping files, important fields.
-
-## Properties Used
-List header, exchange, external parameters.
-
-## Security / Auth
-Mention OAuth, certificates, basic auth if visible.
-
-## Exception Handling
-Describe exception subprocesses.
-
-## Test Payloads
-Create example request + response.
-
-## Deployment Notes
-How to deploy, dependencies.
-
-If information is missing, say "Not provided".
-"""
-
-    res = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=1800,
-    )
-
-    return res.choices[0].message["content"]
-
+if __name__ == "__main__":
+    main()
