@@ -1,0 +1,38 @@
+name: Auto-generate iFlow Documentation
+
+on:
+  push:
+    paths:
+      - 'CPIPracticeflows/**'
+      - 'EmailreceiverxlsxToXML/**'
+      - 'flow1/**'
+      - 'deploycheck/**'
+      - 'cicdcheck1/**'
+
+jobs:
+  generate-doc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r docs-generator/requirements.txt
+
+      - name: Generate documentation
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python docs-generator/generate_iflow.py
+
+      - name: Commit docs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          git add docs/
+          git commit -m "Auto-generated iFlow documentation" || echo "No changes"
+          git push
