@@ -1,137 +1,68 @@
-name: 🤖 Generate Single Consolidated Documentation for Package (Ollama)
+name: Generate CPI iFlow Docs
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      package_id:
-        description: "The ID of the CPI Integration Package (e.g., 'CPIPracticeflows')."
-        required: true
-        type: string
 
 permissions:
   contents: write
 
 jobs:
-  document:
+  doc:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # ----------------------------
-      # Checkout Code
-      # ----------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
-      # ----------------------------
-      # Install Dependencies
-      # ----------------------------
-      - name: Install Required Tools
+      - name: Detect .iflw files
+        id: changed
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+          files=$(find cpi-artifacts -type f -name "*.iflw")
 
-      # ----------------------------
-      # Install Ollama + Pull Mistral
-      # ----------------------------
+          echo "Detected files:"
+          echo "$files"
+
+          files=$(echo "$files" | tr '\n' ' ')
+          echo "files=$files" >> $GITHUB_OUTPUT
+
       - name: Install Ollama
+        if: steps.changed.outputs.files != ''
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Pull Mistral Model
+      - name: Pull model
+        if: steps.changed.outputs.files != ''
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
           ollama pull mistral
 
-      # ----------------------------
-      # Generate Documentation
-      # ----------------------------
-      - name: Generate Consolidated Documentation
-        id: documentation_step
-        env:
-          PKG_ID: ${{ github.event.inputs.package_id }}
+      - name: Install Pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+
+      - name: Generate Docs
+        if: steps.changed.outputs.files != ''
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
+          python3 tools/generate_iflow_docs.py ${{ steps.changed.outputs.files }}
 
-          PKG_DIR="cpi-artifacts/$PKG_ID"
-          OUTPUT_FILE="$PKG_DIR/Package_Summary.md"
-
-          if [ ! -d "$PKG_DIR" ]; then
-            echo "::error::Package directory not found: $PKG_DIR"
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-          echo "🔍 Scanning package: $PKG_ID"
-
-          # Find all supported artifact types
-          FILES=$(find "$PKG_DIR" -type f \( -name "*.iflw" -o -name '*.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name 'iFlowContent.xml' \))
-
-          if [ -z "$FILES" ]; then
-            echo "::warning::No analyzable artifacts found."
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          FULL_CONTENT=""
-
-          for file in $FILES; do
-            CONTENT=$(cat "$file")
-            FULL_CONTENT+="\n\n--- START ARTIFACT: $file ---\n$CONTENT\n--- END ARTIFACT: $file ---\n"
-          done
-
-          echo "📦 Total collected content size: ${#FULL_CONTENT} characters"
-
-          SYSTEM_PROMPT="You are a senior SAP CPI architect. Analyze all CPI artifacts and produce ONE consolidated Markdown documentation in the following 10-section structure:
-
-1. High-level architecture  
-2. Purpose of each iFlow  
-3. Sender/Receiver systems  
-4. Adapter types  
-5. Step-by-step flow explanation  
-6. Mapping logic summary  
-7. Groovy script explanation  
-8. Error handling  
-9. Security/authentication  
-10. Deployment notes  
-
-Write crystal-clear, concise, accurate SAP CPI documentation."
-
-          USER_PROMPT="Generate the full technical documentation using the 10-section format. Here are ALL package artifacts:\n$FULL_CONTENT"
-
-          echo "🧠 Running Ollama Mistral..."
-
-          RESULT=$(printf "%s\n\n%s" "$SYSTEM_PROMPT" "$USER_PROMPT" | ollama run mistral)
-
-          if [ -z "$RESULT" ]; then
-            echo "::error::No documentation generated."
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-          echo "$RESULT" > "$OUTPUT_FILE"
-
-          echo "📄 Documentation saved to: $OUTPUT_FILE"
-          echo "docs_generated=true" >> $GITHUB_OUTPUT
-
-      # ----------------------------
-      # Commit Documentation
-      # ----------------------------
-      - name: Commit Consolidated Documentation
-        if: steps.documentation_step.outputs.docs_generated == 'true'
+      - name: Commit documents
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-
-          PKG_ID=${{ github.event.inputs.package_id }}
-          OUTPUT_PATH="cpi-artifacts/$PKG_ID/Package_Summary.md"
-
-          git add "$OUTPUT_PATH"
-
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
           if git diff --cached --quiet; then
-            echo "No changes detected. Skipping commit."
+            echo "No changes"
             exit 0
           fi
-
-          git commit -m "🤖 OLLAMA: Consolidated CPI Package Documentation for $PKG_ID"
-          git
+          git commit -m "Auto-generated CPI iFlow Documentation"
+          git push
