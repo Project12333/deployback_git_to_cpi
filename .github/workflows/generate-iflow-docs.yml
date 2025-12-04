@@ -1,39 +1,24 @@
-name: 🤖 Generate Consolidated CPI Package Documentation (Ollama)
+name: Generate CPI Package Docs (Ollama)
 
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Package (example: CPIPracticeflows)"
-        required: true
         type: string
+        required: true
+        description: "Package ID to document"
 
 permissions:
   contents: write
 
 jobs:
-  document:
+  build_docs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # --------------------------------------------
-      # Checkout repository
-      # --------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --------------------------------------------
-      # Install dependencies
-      # --------------------------------------------
-      - name: Install jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-
-      # --------------------------------------------
-      # Install Ollama and Mistral
-      # --------------------------------------------
       - name: Install Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
@@ -43,91 +28,23 @@ jobs:
           export PATH="$HOME/.ollama/bin:$PATH"
           ollama pull mistral
 
-      # --------------------------------------------
-      # Create consolidated documentation
-      # --------------------------------------------
-      - name: Generate Documentation with Ollama
-        id: documentation_step
-        env:
-          PKG_ID: ${{ github.event.inputs.package_id }}
+      - name: Run documentation generator
         run: |
-          export PATH="$HOME/.ollama/bin:$PATH"
+          chmod +x tools/ollama_generate_docs.sh
+          tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
-          PKG_DIR="cpi-artifacts/$PKG_ID"
-          OUTPUT_FILE="$PKG_DIR/Package_Summary.md"
+      - name: Commit results
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
 
-          if [ ! -d "$PKG_DIR" ]; then
-            echo "::error::Package directory not found: $PKG_DIR"
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+          PKG="cpi-artifacts/${{ github.event.inputs.package_id }}/Package_Summary.md"
 
-          echo "📦 Reading package: $PKG_ID"
-
-          # Collect relevant files: iflows, XML, Groovy, XSLT
-          FILES=$(find "$PKG_DIR" -type f \( -name "*.iflw" -o -name "*.xml" -o -name "*.groovy" -o -name "*.xslt" -o -name "iFlowContent.xml" \))
-
-          if [ -z "$FILES" ]; then
-            echo "::warning::No analyzable artifacts found."
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
+          git add "$PKG"
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
             exit 0
           fi
 
-          FULL_CONTENT=""
-
-          for file in $FILES; do
-            CONTENT=$(cat "$file")
-            FULL_CONTENT+="\n\n--- START ARTIFACT: $file ---\n$CONTENT\n--- END ARTIFACT: $file ---\n"
-          done
-
-          echo "🔍 Total collected size: ${#FULL_CONTENT} characters"
-
-          # -------------------------------
-          # PROMPT BUILDING
-          # -------------------------------
-          SYSTEM_PROMPT="You are a senior SAP CPI Architect. Produce one consolidated Markdown documentation with EXACTLY the following sections:
-
-1. High-level architecture
-2. Purpose of each iFlow
-3. Sender/Receiver systems
-4. Adapter types used
-5. Step-by-step flow explanation
-6. Mapping logic summary
-7. Groovy script explanations
-8. Error handling
-9. Security/authentication
-10. Deployment notes
-
-Write clear, precise, deeply technical documentation."
-
-          USER_PROMPT="Use the following artifacts to generate the documentation:\n$FULL_CONTENT"
-
-          # -------------------------------
-          # WRITE FULL PROMPT TO FILE (SAFE)
-          # -------------------------------
-          echo "$SYSTEM_PROMPT" > prompt.txt
-          echo "" >> prompt.txt
-          echo "$USER_PROMPT" >> prompt.txt
-
-          echo "🧠 Running Mistral via Ollama..."
-
-          # -------------------------------
-          # THE FIX: SAFE REDIRECTION
-          # -------------------------------
-          RESULT=$(ollama run mistral < prompt.txt)
-
-          if [ -z "$RESULT" ]; then
-            echo "::error::Ollama returned empty output."
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-          echo "$RESULT" > "$OUTPUT_FILE"
-          echo "📄 Documentation saved to $OUTPUT_FILE"
-          echo "docs_generated=true" >> $GITHUB_OUTPUT
-
-      # --------------------------------------------
-      # Commit documentation back to GitHub
-      # --------------------------------------------
-      - name: Commit Documentation
-        if: steps.documentation_step._
+          git commit -m "Generated documentation for package ${{ github.event.inputs.package_id }}"
+          git push
