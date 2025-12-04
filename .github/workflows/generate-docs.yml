@@ -3,14 +3,10 @@ name: Auto-generate iFlow Documentation
 on:
   push:
     paths:
-      - 'cpi-artifacts/CPIPracticeflows/**'
-      - 'cpi-artifacts/EmailreceiverxlsxToXML/**'
-      - 'cpi-artifacts/flow1/**'
-      - 'cpi-artifacts/deploycheck/**'
-      - 'cpi-artifacts/cicdcheck1/**'
+      - 'cpi-artifacts/**'   # ANY flow exported from CPI triggers doc generation
 
 jobs:
-  generate-doc:
+  generate-docs:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,15 +20,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r docs-generator/requirements.txt
 
-      - name: Generate documentation
+      - name: Generate documentation for all iFlows
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python docs-generator/generate_iflow.py
 
-      - name: Commit docs
+      - name: Commit documentation
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "actions@github.com"
           git add docs/
-          git commit -m "Auto-generated iFlow documentation" || echo "No changes"
+          git commit -m "Auto-generated documentation" || echo "No changes"
           git push
