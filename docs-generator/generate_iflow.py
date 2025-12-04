@@ -2,7 +2,7 @@ import os
 from parser import read_iflow
 from generator import generate_documentation
 
-IFLOW_DIR = IFLOW_DIR = "CPIPracticeflows/democicd"   # change this for each flow
+IFLOW_DIR = IFLOW_DIR = IFLOW_DIR = "cpi-artifacts/CPIPracticeflows/democicd"  # change this for each flow
 
 def main():
     print("Reading iFlow...")
