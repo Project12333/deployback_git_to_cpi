@@ -2,7 +2,8 @@ name: Generate CPI iFlow Docs
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -13,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -25,24 +27,26 @@ jobs:
       - name: Detect .iflw files
         id: changed
         run: |
-          files=$(find cpi-artifacts -type f -name "*.iflw")
+          # Find all .iflw files under cpi-artifacts
+          files=$(find cpi-artifacts -type f -name "*.iflw" -print)
 
           echo "Detected files:"
           echo "$files"
 
-          files=$(echo "$files" | tr '\n' ' ')
-          echo "files=$files" >> $GITHUB_OUTPUT
+          # convert newline separated to space separated single-line
+          files=$(echo "$files" | tr '\n' ' ' | sed 's/ $//')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
 
       - name: Install Ollama
-        if: steps.changed.outputs.files != ''
+        if: ${{ steps.changed.outputs.files != '' }}
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Pull model
-        if: steps.changed.outputs.files != ''
+      - name: Pull Mistral model
+        if: ${{ steps.changed.outputs.files != '' }}
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
-          ollama pull mistral
+          ollama pull mistral || true
 
       - name: Install Pandoc
         run: |
@@ -50,9 +54,10 @@ jobs:
           sudo apt-get install -y pandoc
 
       - name: Generate Docs
-        if: steps.changed.outputs.files != ''
+        if: ${{ steps.changed.outputs.files != '' }}
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
+          echo "Running generator on files: ${{ steps.changed.outputs.files }}"
           python3 tools/generate_iflow_docs.py ${{ steps.changed.outputs.files }}
 
       - name: Commit documents
@@ -61,7 +66,7 @@ jobs:
           git config user.email "github-actions@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes"
+            echo "No changes to commit"
             exit 0
           fi
           git commit -m "Auto-generated CPI iFlow Documentation"
