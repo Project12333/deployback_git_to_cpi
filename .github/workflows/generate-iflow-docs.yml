@@ -1,0 +1,238 @@
+name: Generate CPI iFlow Documentation (Markdown + DOCX)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      #######################################################################
+      # Detect changed .iflw files (or all if manual trigger)
+      #######################################################################
+      - name: Determine changed .iflw files
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            files=$(git ls-files src/main/resources/**/*.iflw)
+          else
+            BEFORE=${{ github.event.before }}
+            AFTER=${{ github.sha }}
+
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              files=$(git ls-files src/main/resources/**/*.iflw)
+            else
+              files=$(git diff --name-only $BEFORE $AFTER -- src/main/resources/**/*.iflw)
+            fi
+          fi
+
+          files=$(echo "$files" | tr '\n' ',' | sed 's/,$//')
+
+          echo "files=$files" >> $GITHUB_OUTPUT
+
+      #######################################################################
+      # Install Ollama + Mistral
+      #######################################################################
+      - name: Install Ollama
+        if: steps.changed.outputs.files != ''
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          export PATH="$HOME/.ollama/bin:$PATH"
+          ollama --version
+
+      - name: Pull Mistral Model (Ollama)
+        if: steps.changed.outputs.files != ''
+        run: |
+          export PATH="$HOME/.ollama/bin:$PATH"
+          ollama pull mistral
+
+      #######################################################################
+      # Install Pandoc (for DOCX generation)
+      #######################################################################
+      - name: Install Pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+
+      #######################################################################
+      # Add Documentation Generator Script
+      #######################################################################
+      - name: Add generator script
+        run: |
+          mkdir -p tools
+          cat > tools/generate_iflow_docs.py << 'PY'
+#!/usr/bin/env python3
+import sys, os, json, subprocess, tempfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+def parse_iflw(path):
+    try:
+        tree = ET.parse(path)
+        root = tree.getroot()
+    except Exception as e:
+        return {"error": str(e)}
+
+    info = {}
+    info["flowname"] = Path(path).stem
+    info["file"] = str(path)
+
+    adapters, scripts, mappings, exceptions, properties = [], [], [], [], []
+
+    for elem in root.iter():
+        tag = elem.tag.split('}')[-1].lower()
+        name = elem.attrib.get("name") or elem.attrib.get("id")
+
+        if "adapter" in tag or "sender" in tag or "receiver" in tag:
+            adapters.append({"tag": tag, "name": name})
+
+        if "script" in tag or "groovy" in tag:
+            scripts.append({"tag": tag, "name": name})
+
+        if "mapping" in tag:
+            mappings.append({"tag": tag, "name": name})
+
+        if "exception" in tag or "error" in tag:
+            exceptions.append({"tag": tag, "name": name})
+
+        if "property" in tag or "header" in tag:
+            properties.append({"tag": tag, "name": name})
+
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        raw = f.read(20000)
+
+    info.update({
+        "adapters": adapters,
+        "scripts": scripts,
+        "mappings": mappings,
+        "exceptions": exceptions,
+        "properties": properties,
+        "xml_sample": raw
+    })
+
+    return info
+
+def build_prompt(summary):
+    return f"""
+You are an expert SAP CPI Architect.
+
+Generate a COMPLETE technical documentation for this CPI iFlow in **Markdown**.
+
+Sections MUST include:
+- Title  
+- Purpose  
+- Functional Overview  
+- Technical Overview  
+- Sender/Receiver Adapters  
+- Mappings (if any)  
+- Groovy Scripts (with explanation)  
+- Flow Steps Description  
+- Exception Handling  
+- Important Properties / Parameters  
+- Deployment Notes  
+- Test Cases  
+- Version Notes  
+
+Here is the structured iFlow summary:
+{json.dumps(summary, indent=2)}
+""".strip()
+
+def run_ollama(prompt):
+    with tempfile.NamedTemporaryFile("w+", delete=False) as f:
+        f.write(prompt)
+        name = f.name
+
+    cmd = f"ollama run mistral < {name}"
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    os.unlink(name)
+
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+def write_docs(iflw, md_content):
+    base = Path(iflw).parent / "docs"
+    base.mkdir(exist_ok=True)
+
+    flowname = Path(iflw).stem
+    md_path = base / f"{flowname}_Documentation.md"
+    docx_path = base / f"{flowname}_Documentation.docx"
+
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(md_content)
+
+    # Convert MD → DOCX with Pandoc
+    subprocess.run(
+        ["pandoc", md_path, "-o", docx_path],
+        check=False
+    )
+
+    return md_path, docx_path
+
+def main(paths):
+    for p in paths:
+        summary = parse_iflw(p)
+        if "error" in summary:
+            print("ERROR parsing:", summary["error"])
+            continue
+
+        prompt = build_prompt(summary)
+        md = run_ollama(prompt)
+
+        if not md:
+            print(f"Ollama failed for {p}.")
+            continue
+
+        md_path, docx_path = write_docs(p, md)
+        print("Generated:", md_path, "and", docx_path)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
+PY
+
+      - name: Prepare generator
+        run: chmod +x tools/generate_iflow_docs.py
+
+      #######################################################################
+      # RUN DOCUMENTATION GENERATOR
+      #######################################################################
+      - name: Run Documentation Generator
+        run: |
+          export PATH="$HOME/.ollama/bin:$PATH"
+          files="${{ steps.changed.outputs.files }}"
+          IFS=',' read -r -a arr <<< "$files"
+          python3 tools/generate_iflow_docs.py "${arr[@]}"
+
+      #######################################################################
+      # Commit generated docs (Markdown + DOCX)
+      #######################################################################
+      - name: Commit documentation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No documentation changes"
+            exit 0
+          fi
+
+          git commit -m "Auto-generate CPI iFlow Documentation (MD + DOCX)"
+          git push
