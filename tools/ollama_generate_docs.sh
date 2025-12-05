@@ -1,35 +1,59 @@
-#!/bin/bash
-set -e
+name: Generate CPI Package Docs (DeepSeek via Docker)
 
-PACKAGE_ID="$1"
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        required: true
+        description: "Package ID inside cpi-artifacts to document"
+        type: string
 
-echo "📦 Package ID received: $PACKAGE_ID"
+permissions:
+  contents: write
 
-# Locate the package folder
-PKG_DIR="cpi-artifacts/$PACKAGE_ID"
+jobs:
+  docs:
+    runs-on: ubuntu-latest
 
-if [ ! -d "$PKG_DIR" ]; then
-  echo "❌ ERROR: Package folder not found: $PKG_DIR"
-  exit 1
-fi
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-echo "📂 Package folder found: $PKG_DIR"
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq pandoc
 
-# Find all iFlow files inside the package
-IFLWS=$(find "$PKG_DIR" -type f -name "*.iflw")
+      - name: Start Ollama in Docker
+        run: |
+          docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
+          # wait for Ollama server to initialize
+          sleep 12
+          docker exec ollama ollama pull deepseek-r1:14b
 
-if [ -z "$IFLWS" ]; then
-  echo "❌ ERROR: No .iflw files found inside $PKG_DIR"
-  exit 1
-fi
+      - name: Make tools executable
+        run: |
+          chmod +x tools/ollama_generate_docs.sh
+          chmod +x tools/ollama_generate_docs.py
 
-echo "📝 Found iFlow files:"
-echo "$IFLWS"
+      - name: Run documentation generator
+        env:
+          OLLAMA_HOST: http://localhost:11434
+        run: |
+          tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
-# Generate documentation for every iFlow
-for f in $IFLWS; do
-  echo "🚀 Generating documentation for: $f"
-  python3 tools/ollama_generate_docs.py "$f"
-done
+      - name: Commit results
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
 
-echo "✅ Documentation generation completed."
+          PKG_DIR="cpi-artifacts/${{ github.event.inputs.package_id }}"
+          git add "$PKG_DIR" || true
+
+          if git diff --cached --quiet; then
+            echo "No documentation changes"
+            exit 0
+          fi
+
+          git commit -m "Generated DeepSeek documentation for package ${{ github.event.inputs.package_id }}"
+          git push || true
