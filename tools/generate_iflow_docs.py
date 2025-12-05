@@ -44,30 +44,55 @@ def parse_iflw(path):
 
     return data
 
+
 def doc_prompt(data):
     return f"""
-Generate FULL CPI iFlow documentation in Markdown.
+You are an expert SAP Integration Suite / CPI architect.
 
-Sections required:
-- Flow Name
-- Purpose
-- Overview
-- Sender & Receiver Adapters
-- Groovy Script explanation
-- Mappings used
-- Exception Handling
-- Properties/Headers
-- Message Flow Steps
-- Test Cases
-- Deployment Notes
+Generate an extremely detailed, accurate, and professionally structured CPI iFlow documentation in Markdown.
+Write like a senior SAP Integration consultant preparing an official project deliverable.
 
-iFlow Summary:
+# DOCUMENT STRUCTURE REQUIRED
+
+1. **Flow Name**
+2. **Business Purpose**
+3. **High-Level Technical Overview**
+4. **Integration Flow Architecture Diagram (text-based explanation)**
+5. **Sender & Receiver Adapters**
+6. **Detailed Message Flow Explanation**
+   - Groovy scripts
+   - Content modifiers
+   - Mappings
+   - Routers
+   - Exception subprocesses
+7. **Groovy Script Analysis**
+   - Purpose
+   - Key logic inferred from naming and placement
+8. **Mapping Logic Explanation**
+9. **Exception Handling**
+10. **Properties & Headers**
+11. **End-to-End Runtime Behavior**
+12. **Test Scenarios (positive and negative)**
+13. **Deployment Notes**
+14. **Security Considerations**
+15. **Assumptions & Limitations**
+16. **Sample Payloads (if inferable)**
+
+## RAW iFLOW PARSED DATA (use this to infer missing information)
 {json.dumps(data, indent=2)}
+
+## IMPORTANT RULES:
+- The output must be long, detailed, structured, and professional.
+- Infer missing information realistically based on best practices.
+- Never say “I cannot determine”; always provide meaningful documentation.
+- Output only valid Markdown.
 """
 
+
 def run_llm(prompt):
-    cmd = f"echo \"{prompt}\" | ollama run mistral"
+    cmd = f"echo \"{prompt}\" | ollama run deepseek-r1:14b"
     return subprocess.check_output(cmd, shell=True, text=True)
+
 
 def write_output(iflw_path, md_text):
     base = Path(iflw_path).parent / "docs"
@@ -81,6 +106,7 @@ def write_output(iflw_path, md_text):
     subprocess.run(["pandoc", md_file, "-o", docx_file])
 
     return md_file, docx_file
+
 
 if __name__ == "__main__":
     for p in sys.argv[1:]:
