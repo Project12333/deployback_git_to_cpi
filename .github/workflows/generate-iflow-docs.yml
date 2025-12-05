@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       package_id:
-        type: string
+        description: "Package ID to document (folder under cpi-artifacts)"
         required: true
-        description: "Package ID to document"
+        type: string
 
 permissions:
   contents: write
@@ -14,37 +14,53 @@ permissions:
 jobs:
   build_docs:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install dependencies (pandoc)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y pandoc
+
       - name: Install Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
+          export PATH="$HOME/.ollama/bin:$PATH"
+          echo "PATH updated for session"
 
-      - name: Pull DeepSeek R1 14B
+      - name: Pull DeepSeek R1 14B model
+        env:
+          PATH: ${{ runner.temp }}/.ollama/bin:$PATH
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
           ollama pull deepseek-r1:14b
 
-      - name: Run documentation generator
+      - name: Ensure tools are executable
         run: |
-          chmod +x tools/ollama_generate_docs.sh
+          chmod +x tools/ollama_generate_docs.sh || true
+          chmod +x tools/ollama_generate_docs.py || true
+
+      - name: Run documentation generator
+        env:
+          PATH: ${{ env.PATH }}
+        run: |
+          export PATH="$HOME/.ollama/bin:$PATH"
           tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
-      - name: Commit results
+      - name: Commit generated docs
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
-          PKG="cpi-artifacts/${{ github.event.inputs.package_id }}/Package_Summary.md"
+          PKG_DIR="cpi-artifacts/${{ github.event.inputs.package_id }}"
+          # Add any docs created under that package (works recursively)
+          git add "$PKG_DIR" || true
 
-          git add "$PKG"
           if git diff --cached --quiet; then
             echo "Nothing to commit"
             exit 0
           fi
 
-          git commit -m "Generated documentation (DeepSeek) for package ${{ github.event.inputs.package_id }}"
-          git push
+          git commit -m "Auto-generated DeepSeek docs for package ${{ github.event.inputs.package_id }}" || true
+          git push || true
