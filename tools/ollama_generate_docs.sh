@@ -1,59 +1,31 @@
-name: Generate CPI Package Docs (DeepSeek via Docker)
+#!/bin/bash
+set -e
 
-on:
-  workflow_dispatch:
-    inputs:
-      package_id:
-        required: true
-        description: "Package ID inside cpi-artifacts to document"
-        type: string
+PACKAGE="$1"
+PKG_DIR="cpi-artifacts/$PACKAGE"
 
-permissions:
-  contents: write
+echo "📦 Package ID: $PACKAGE"
 
-jobs:
-  docs:
-    runs-on: ubuntu-latest
+if [ ! -d "$PKG_DIR" ]; then
+  echo "❌ ERROR: Package folder not found: $PKG_DIR"
+  exit 1
+fi
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+# Search for all .iflw files in the package
+IFLOWS=$(find "$PKG_DIR" -type f -name "*.iflw")
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y jq pandoc
+if [ -z "$IFLOWS" ]; then
+  echo "❌ No .iflw files found in $PKG_DIR"
+  exit 1
+fi
 
-      - name: Start Ollama in Docker
-        run: |
-          docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
-          # wait for Ollama server to initialize
-          sleep 12
-          docker exec ollama ollama pull deepseek-r1:14b
+echo "📝 Found iFlows:"
+echo "$IFLOWS"
 
-      - name: Make tools executable
-        run: |
-          chmod +x tools/ollama_generate_docs.sh
-          chmod +x tools/ollama_generate_docs.py
+# Process each iFlow file
+for f in $IFLOWS; do
+  echo "🚀 Generating documentation for: $f"
+  python3 tools/ollama_generate_docs.py "$f"
+done
 
-      - name: Run documentation generator
-        env:
-          OLLAMA_HOST: http://localhost:11434
-        run: |
-          tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
-
-      - name: Commit results
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-
-          PKG_DIR="cpi-artifacts/${{ github.event.inputs.package_id }}"
-          git add "$PKG_DIR" || true
-
-          if git diff --cached --quiet; then
-            echo "No documentation changes"
-            exit 0
-          fi
-
-          git commit -m "Generated DeepSeek documentation for package ${{ github.event.inputs.package_id }}"
-          git push || true
+echo "✅ Completed documentation generation."
