@@ -1,0 +1,10 @@
+{
+  "d": {
+    "Id": "cicdcheck1",
+    "Name": "cicd_check1",
+    "Description": "\u003cp\u003e\u003c/p\u003e",
+    "ShortText": "cicd",
+    "Version": "",
+    "Mode": "EDIT_ALLOWED"
+  }
+}
