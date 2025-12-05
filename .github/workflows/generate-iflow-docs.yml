@@ -1,23 +1,40 @@
-name: Generate CPI Package Docs (Ollama)
+name: Generate CPI iFlow Docs (Ollama)
 
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        type: string
+        description: "Select a CPI Package"
         required: true
-        description: "Package ID to document"
+        type: choice
+        options: ${{ fromJson(needs.discover.outputs.package_list) }}
 
 permissions:
   contents: write
 
 jobs:
-  build_docs:
+
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      package_list: ${{ steps.scan.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan repository for packages
+        id: scan
+        run: |
+          chmod +x tools/discover_packages.sh
+          result=$(tools/discover_packages.sh)
+          echo "packages=$result" >> $GITHUB_OUTPUT
+
+  generate_docs:
+    needs: discover
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
 
       - name: Install Ollama
         run: |
@@ -28,23 +45,28 @@ jobs:
           export PATH="$HOME/.ollama/bin:$PATH"
           ollama pull mistral
 
-      - name: Run documentation generator
+      - name: Install Python
         run: |
-          chmod +x tools/ollama_generate_docs.sh
-          tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip
 
-      - name: Commit results
+      - name: Generate documentation
+        run: |
+          PACKAGE="${{ github.event.inputs.package_id }}"
+          FILES=$(find cpi-artifacts/$PACKAGE -type f -name "*.iflw")
+
+          echo "Processing files: $FILES"
+
+          python3 tools/generate_iflow_docs.py $FILES
+
+      - name: Commit documentation
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-
-          PKG="cpi-artifacts/${{ github.event.inputs.package_id }}/Package_Summary.md"
-
-          git add "$PKG"
+          git add -A
           if git diff --cached --quiet; then
-            echo "Nothing to commit"
+            echo "No changes"
             exit 0
           fi
-
-          git commit -m "Generated documentation for package ${{ github.event.inputs.package_id }}"
+          git commit -m "Generated documentation for ${{ github.event.inputs.package_id }}"
           git push
