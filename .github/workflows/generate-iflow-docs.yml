@@ -1,72 +1,50 @@
-name: Generate CPI iFlow Docs (Ollama)
+name: Generate CPI Package Docs (DeepSeek)
 
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "Select a CPI Package"
+        type: string
         required: true
-        type: choice
-        options: ${{ fromJson(needs.discover.outputs.package_list) }}
+        description: "Package ID to document"
 
 permissions:
   contents: write
 
 jobs:
-
-  discover:
-    runs-on: ubuntu-latest
-    outputs:
-      package_list: ${{ steps.scan.outputs.packages }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Scan repository for packages
-        id: scan
-        run: |
-          chmod +x tools/discover_packages.sh
-          result=$(tools/discover_packages.sh)
-          echo "packages=$result" >> $GITHUB_OUTPUT
-
-  generate_docs:
-    needs: discover
+  build_docs:
     runs-on: ubuntu-latest
 
     steps:
-
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Pull Mistral
+      - name: Pull DeepSeek R1 14B
         run: |
           export PATH="$HOME/.ollama/bin:$PATH"
-          ollama pull mistral
+          ollama pull deepseek-r1:14b
 
-      - name: Install Python
+      - name: Run documentation generator
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3 python3-pip
+          chmod +x tools/ollama_generate_docs.sh
+          tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
-      - name: Generate documentation
-        run: |
-          PACKAGE="${{ github.event.inputs.package_id }}"
-          FILES=$(find cpi-artifacts/$PACKAGE -type f -name "*.iflw")
-
-          echo "Processing files: $FILES"
-
-          python3 tools/generate_iflow_docs.py $FILES
-
-      - name: Commit documentation
+      - name: Commit results
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add -A
+
+          PKG="cpi-artifacts/${{ github.event.inputs.package_id }}/Package_Summary.md"
+
+          git add "$PKG"
           if git diff --cached --quiet; then
-            echo "No changes"
+            echo "Nothing to commit"
             exit 0
           fi
-          git commit -m "Generated documentation for ${{ github.event.inputs.package_id }}"
+
+          git commit -m "Generated documentation (DeepSeek) for package ${{ github.event.inputs.package_id }}"
           git push
