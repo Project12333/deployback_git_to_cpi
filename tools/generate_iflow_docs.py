@@ -1,117 +1,72 @@
 #!/usr/bin/env python3
-import sys, json, subprocess
+import sys
+import json
+import requests
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import subprocess
 
+OLLAMA_URL = "http://localhost:11434/api/generate"
+
+# -------------------------------
+# Extract metadata from .iflw
+# -------------------------------
 def parse_iflw(path):
-    try:
-        tree = ET.parse(path)
-        root = tree.getroot()
-    except Exception as e:
-        return {"error": str(e)}
-
-    data = {
+    meta = {
         "flowname": Path(path).stem,
+        "senders": [],
+        "receivers": [],
         "adapters": [],
         "scripts": [],
         "mappings": [],
-        "exceptions": [],
-        "properties": [],
-        "xml_sample": ""
+        "steps": []
     }
 
-    for elem in root.iter():
-        tag = elem.tag.split('}')[-1].lower()
-        name = elem.attrib.get("name") or elem.attrib.get("id")
+    try:
+        tree = ET.parse(path)
+        root = tree.getroot()
 
-        if any(x in tag for x in ["adapter", "sender", "receiver"]):
-            data["adapters"].append({"tag": tag, "name": name})
+        for elem in root.iter():
+            tag = elem.tag.split("}")[-1].lower()
+            name = elem.attrib.get("name") or elem.attrib.get("id") or tag
 
-        if "script" in tag:
-            data["scripts"].append({"tag": tag, "name": name})
+            # Sender / Receiver detection
+            if "sender" in tag:
+                meta["senders"].append(name)
+            if "receiver" in tag:
+                meta["receivers"].append(name)
 
-        if "mapping" in tag:
-            data["mappings"].append({"tag": tag, "name": name})
+            # Adapters
+            if "adapter" in tag:
+                meta["adapters"].append(name)
 
-        if "exception" in tag or "error" in tag:
-            data["exceptions"].append({"tag": tag, "name": name})
+            # Script detection (Groovy, JS, ScriptTask)
+            if "script" in tag or "scripttask" in tag or "groovy" in tag:
+                meta["scripts"].append(name)
 
-        if "property" in tag or "header" in tag:
-            data["properties"].append({"tag": tag, "name": name})
+            # Mapping
+            if "mapping" in tag:
+                meta["mappings"].append(name)
 
-    with open(path, "r", errors="ignore") as f:
-        data["xml_sample"] = f.read(20000)
+            # Order of execution
+            meta["steps"].append(name)
 
-    return data
+    except Exception as e:
+        meta["error"] = f"XML parse error: {e}"
 
-
-def doc_prompt(data):
-    return f"""
-You are an expert SAP Integration Suite / CPI architect.
-
-Generate an extremely detailed, accurate, and professionally structured CPI iFlow documentation in Markdown.
-Write like a senior SAP Integration consultant preparing an official project deliverable.
-
-# DOCUMENT STRUCTURE REQUIRED
-
-1. **Flow Name**
-2. **Business Purpose**
-3. **High-Level Technical Overview**
-4. **Integration Flow Architecture Diagram (text-based explanation)**
-5. **Sender & Receiver Adapters**
-6. **Detailed Message Flow Explanation**
-   - Groovy scripts
-   - Content modifiers
-   - Mappings
-   - Routers
-   - Exception subprocesses
-7. **Groovy Script Analysis**
-   - Purpose
-   - Key logic inferred from naming and placement
-8. **Mapping Logic Explanation**
-9. **Exception Handling**
-10. **Properties & Headers**
-11. **End-to-End Runtime Behavior**
-12. **Test Scenarios (positive and negative)**
-13. **Deployment Notes**
-14. **Security Considerations**
-15. **Assumptions & Limitations**
-16. **Sample Payloads (if inferable)**
-
-## RAW iFLOW PARSED DATA (use this to infer missing information)
-{json.dumps(data, indent=2)}
-
-## IMPORTANT RULES:
-- The output must be long, detailed, structured, and professional.
-- Infer missing information realistically based on best practices.
-- Never say “I cannot determine”; always provide meaningful documentation.
-- Output only valid Markdown.
-"""
+    return meta
 
 
-def run_llm(prompt):
-    cmd = f"echo \"{prompt}\" | ollama run deepseek-r1:14b"
-    return subprocess.check_output(cmd, shell=True, text=True)
+# -------------------------------
+# High-level Mermaid Diagram
+# -------------------------------
+def high_level_diagram(meta):
 
+    sender = meta["senders"][0] if meta["senders"] else "SenderSystem"
+    receiver = meta["receivers"][0] if meta["receivers"] else "ReceiverSystem"
 
-def write_output(iflw_path, md_text):
-    base = Path(iflw_path).parent / "docs"
-    base.mkdir(exist_ok=True)
-
-    name = Path(iflw_path).stem
-    md_file = base / f"{name}_Documentation.md"
-    docx_file = base / f"{name}_Documentation.docx"
-
-    md_file.write_text(md_text, encoding="utf-8")
-    subprocess.run(["pandoc", md_file, "-o", docx_file])
-
-    return md_file, docx_file
-
-
-if __name__ == "__main__":
-    for p in sys.argv[1:]:
-        data = parse_iflw(p)
-        prompt = doc_prompt(data)
-        md = run_llm(prompt)
-        mdf, dxf = write_output(p, md)
-        print("Generated:", mdf, dxf)
+    diagram = f"""
+```mermaid
+graph TD
+    {sender} -->|Request| CPI
+    CPI -->|Processed Output| {receiver}
