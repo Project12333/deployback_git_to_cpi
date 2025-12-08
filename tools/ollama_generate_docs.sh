@@ -1,31 +1,22 @@
-
----
-
-# ✅ **FILE 2 — `tools/ollama_generate_docs.sh` (UPDATED + PARALLEL + FAST)**  
-👉 **Copy–paste exactly**
-
----
-
-```bash
 #!/bin/bash
 set -e
 
 PACKAGE="$1"
 PKG_DIR="cpi-artifacts/$PACKAGE"
 
-echo "📦 Package: $PACKAGE"
+echo "Package: $PACKAGE"
 
 IFLOWS=$(find "$PKG_DIR" -type f -name "*.iflw")
 
 if [ -z "$IFLOWS" ]; then
-  echo "❌ No iFlows found in package."
+  echo "No iFlows found in package."
   exit 1
 fi
 
-echo "📝 Found iFlows:"
+echo "Found iFlows:"
 echo "$IFLOWS"
 
-# Run up to 4 documents in parallel for speed
+# Run multiple in parallel for speed
 echo "$IFLOWS" | xargs -n 1 -P 4 -I {} python3 tools/ollama_generate_docs.py "{}"
 
-echo "✅ Completed documentation generation."
+echo "Documentation generation completed."
