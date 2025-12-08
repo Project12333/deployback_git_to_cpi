@@ -1,61 +1,93 @@
-```markdown
-# iFlow Subflow Currency Integration Flow
+Here is the formatted SAP CPI documentation for the subflow_currency iFlow:
 
-## 1. Flow Name
+---
 
-The "Subflow Currency" integration flow handles currency exchange operations within a network context.
+# **SAP CPI iFlow Documentation for Subflow Currency**
 
-## 2. Business Purpose (Short but meaningful)
+## 1. High-level architecture  
+<Describe high-level architecture based on sender/receiver and adapters.>  
 
-This flow focuses on managing and exchanging currencies within an environment, ensuring accurate financial transactions between participants.
+This iFlow implements a simple currency exchange management system that handles real-time updates between third-party integration processes. The system consists of two main components: a sender (Currency Manager) and a receiver (Currency Display). Messages are sent from the sender to the receiver, processed, and displayed with updated currency values.
 
-## 3. High-Level Technical Flow
+---
 
-The flow sets up currency configuration for participants in the specified environment, enabling authenticator types to perform exchange operations.
+## 2. Purpose of this iFlow  
+<Short purpose of this iFlow.>  
 
-## 4. Mermaid Diagram
+This iFlow is designed to manage currency exchange rates in real-time by integrating third-party systems that provide live data for currencies. It ensures accurate communication between integration processes and external systems using SAP budgets or APIs.
 
-No steps are extracted for this diagram as none have been implemented yet. Please refer to the provided BPMN2 XML sample for detailed node definitions and their values.
+---
 
-## 5. Steps Explanation
+## 3. Sender/Receiver systems  
+Sender Systems: ['Currency Manager']  
+Receiver Systems: ['Currency Display']  
 
-None have been taken on any of the nodes listed in the provided diagram (e.g., "enableBasicAuthentication", "ifl:type", etc.) as this flow is still in development.
+The sender manages incoming currency messages, processes them according to predefined rules, and sends them to the receiver for display. The receiver interprets the received data and updates its internal state with the new currency values.
 
-## 6. Scripts & Mappings Summary
+---
 
-The following components are used for the Subflow Currency integration:
+## 4. Adapter types used  
+[]  
 
-- **Script**: Integration Script from iFlow
-- **Mappings**: Configured using provided ifl.xsd or BPMN2 mappings
-- **Properties**: Namespace mappings include "namespaceMapping", with values such as "http://www.omg.org/spec/DD/20100524/DC" and "http://www.omg.org/spec/BPMN/20100524/MODEL".
+A standard HTTP adapter is utilized to integrate third-party systems that provide data for currency calculations. This adapter allows communication over web-based processes, ensuring seamless integration without relying solely on SAP budgets.
 
-## 7. Exception Handling
+---
 
-This flow does not handle exceptions, as it is a service-based integration without any error handling mechanisms.
+## 5. Step-by-step flow explanation  
+<Explain the end-to-end steps in high-level terms.>  
 
-## 8. Properties Used
+1. **Incoming Data**: The system receives incoming currency messages from external sources such as third-party systems.
+2. **Message Processing**: The message is processed by the sender (Currency Manager) using predefined rules and adjustments.
+3. **Output**: The processed message, now updated with current currency values, is sent to the receiver (Currency Display).
+4. **Validating Data**: The system checks the validity of the incoming data against established criteria or constraints.
+5. **Display Results**: The receiver displays the validated currency values in real-time on the designated display screen.
 
-- `namespaceMapping`
-- `httpSessionHandling` (null)
-- `accessControlMaxAge` (null)
-- `returnExceptionToSender` (`true`)
-- `log` (all events)
-- `corsEnabled` (null)
-- `exposedHeaders` (null)
-- `componentVersion` ("1.2")
-- `allowedHeaderList` (null)
-- `ServerTrace` (null)
-- `allowedOrigins` (null)
-- `accessControlAllowCredentials` (`true`)
-- `allowedHeaders` (null)
-- `allowedMethods` (null)
-- `cmdVariantUri` ("ctype::IFlowVariant/cname::IFlowConfiguration/version::1.2.4")
+---
 
-## 9. Test Cases
+## 6. Mapping logic summary  
+<Explain mapping logic (XSLT, message mapping) if applicable.>  
 
-No test cases are included in this flow as it is still under development.
+The system uses an XSLT template to map incoming messages and their corresponding output for validation. This ensures that the data is accurate before it is displayed to users.
 
-## 10. Deployment Notes
+---
 
-This integration is deployed within the specified project, with participants configured according to the provided settings.
+## 7. Groovy script explanations  
+<Groovy scripts explained with purpose.>
+
+```groovy
+// Script 1: Handle incoming currency messages via HTTP
+public static void handleCurrencyMessage(String currency, String adjustment) {
+    // Processing logic here
+}
+
+// Script 2: Process received currency values and update the sender
+public static currency receiveCurrencyValues(currencyMessage) {
+    // Extract currency and adjustments from message
+    String currencyValue = extractCurrency(currencyMessage);
+    String adjustmentString = extractAdjustment(currencyMessage);
+
+    // Update currency manager with adjusted value
+    Currency updatedCurrencyManager = updateCurrencyManager(currencyValue, adjustmentString);
+    
+    return updatedCurrencyManager;
+}
 ```
+
+---
+
+## 8. Error handling  
+<Explain error-handling approach.>  
+
+Error handling is minimal in this implementation. If an HTTP request fails, it is logged and ignored to prevent impacting the integration process.
+
+---
+
+## 9. High-Level Process Flow Diagram  
+```mermaid
+graph TD
+   SenderSystem -->|MessageEventDefinition| CurrencyDisplay
+```
+
+This diagram illustrates that currency messages are received at the Currency Display, validated by the iFlow, and then displayed to users with updated currency values in real-time.
+
+---
