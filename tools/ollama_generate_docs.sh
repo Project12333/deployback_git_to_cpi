@@ -16,7 +16,7 @@ fi
 echo "Found iFlows:"
 echo "$IFLOWS"
 
-# Run multiple in parallel for speed
-echo "$IFLOWS" | xargs -n 1 -P 4 -I {} python3 tools/ollama_generate_docs.py "{}"
+# Correct xargs parallel execution
+printf "%s\n" $IFLOWS | xargs -P 4 -I {} python3 tools/ollama_generate_docs.py "{}"
 
 echo "Documentation generation completed."
