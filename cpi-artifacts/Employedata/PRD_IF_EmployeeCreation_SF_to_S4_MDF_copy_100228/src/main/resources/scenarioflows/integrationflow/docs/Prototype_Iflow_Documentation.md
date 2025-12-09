@@ -1,13 +1,19 @@
-To solve the problem of finding all nodes connected to node_0 based on the provided nested data structure, follow these steps:
+To handle cases where certain fields are set with -1, follow this structured approach:
 
-1. **Parse the Data**: Convert the flat object into a structured format that can be easily manipulated. This might involve using JSON.parse() if the structure is valid, or writing custom parsing code.
+1. **Identify Fields**: Recognize that many fields are structured similarly, indicating a consistent pattern for movement between waypoints.
 
-2. **Identify Edges Starting with 'node_0'**: Extract all edge definitions where the key starts with 'node_0'. These will be our starting points for traversing the graph.
+2. **Source and Destination Nodes**:
+   - For non-zero values in fields like `Edge_SequenceFlow_707545`, note the two "waypoint" values as source and destination nodes.
+   - When a field is set to -1, it means these nodes aren't yet defined.
 
-3. **Traverse Each Edge**: For each edge starting with 'node_0', follow each subsequent edge until no more connections are found, collecting all unique nodes encountered along the way.
+3. **Create or Retrieve Nodes**:
+   - If nodes exist already, use them directly.
+   - If not, either create new ones based on your application's requirements or retrieve existing ones that match the required coordinates.
 
-4. **Collect All Nodes**: Gather all nodes from the traversal, ensuring there are no duplicates, and present them as the connected nodes.
+4. **Apply Movement Logic**:
+   - Use the non-zero values to determine movement distances and directions.
+   - Ensure that movement calculations can start when certain fields are set with -1.
 
-5. **Output the Result**: List all collected node identifiers in a clear format for easy reference.
+5. **Test Scenarios**: Implement tests to verify movement works correctly in different cases, from setting only one field to all fields being set with -1.
 
-By following these steps, you can systematically identify and collect all nodes connected to node_0 based on the provided data structure.
+By following these steps, you can effectively manage the application's behavior when moving nodes based on the provided fields.
