@@ -36,33 +36,31 @@ def parse_iflw(path):
             tag = elem.tag.split("}")[-1]
             name = elem.attrib.get("name") or elem.attrib.get("id") or tag
 
-            # Sender / Receiver
-            if "sender" in tag.lower():
+            tag_lower = tag.lower()
+
+            if "sender" in tag_lower:
                 meta["senders"].append(name)
 
-            if "receiver" in tag.lower():
+            if "receiver" in tag_lower:
                 meta["receivers"].append(name)
 
-            # Adapters
-            if "adapter" in tag.lower():
+            if "adapter" in tag_lower:
                 meta["adapters"].append(name)
 
-            # Scripts
-            if "script" in tag.lower() or "groovy" in tag.lower():
+            if "script" in tag_lower or "groovy" in tag_lower:
                 meta["scripts"].append(name)
 
-            # Mapping
-            if "mapping" in tag.lower():
+            if "mapping" in tag_lower:
                 meta["mappings"].append(name)
 
-            # BPMN elements
+            # BPMN components
             if tag == "serviceTask":
                 meta["servicetasks"].append(name)
 
             if tag == "callActivity":
                 meta["callactivities"].append(name)
 
-            if tag == "exclusiveGateway" or tag == "parallelGateway" or tag == "inclusiveGateway":
+            if tag in ["exclusiveGateway", "inclusiveGateway", "parallelGateway"]:
                 meta["gateways"].append(name)
 
             if tag == "subProcess":
@@ -75,16 +73,15 @@ def parse_iflw(path):
                 meta["endevents"].append(name)
 
     except Exception as e:
-        meta["error"] = f"Failed to parse .iflw: {e}"
+        meta["error"] = f"Could not parse .iflw: {e}"
 
     return meta
 
 
 # ---------------------------------------------------------
-# Generate improved Mermaid diagram
+# Mermaid architecture diagram
 # ---------------------------------------------------------
 def generate_mermaid(meta):
-
     sender = meta["senders"][0] if meta["senders"] else "Sender"
     receiver = meta["receivers"][0] if meta["receivers"] else "Receiver"
 
@@ -98,58 +95,101 @@ graph TD
 
 
 # ---------------------------------------------------------
-# Build final standardized documentation
+# Build prompt (Option A: hidden metadata block)
 # ---------------------------------------------------------
 def build_prompt(meta, diagram):
 
-    return (
-f"You are an SAP CPI documentation expert.\n"
-f"Generate documentation STRICTLY in the exact format below.\n"
-f"DO NOT hallucinate missing elements—only describe components present in metadata.\n\n"
+    metadata_json = json.dumps(meta, indent=2)
 
-f"# Technical Documentation – {meta['flowname']}\n\n"
+    return f"""
+You are an SAP CPI documentation expert.
 
-f"## 1. Overview\n"
-f"<Generate a short overview of this iFlow using only available metadata.>\n\n"
+<<METADATA>>
+{metadata_json}
+<</METADATA>>
 
-f"## 2. Systems Involved\n"
-f"### Sender Systems\n{meta['senders']}\n\n"
-f"### Receiver Systems\n{meta['receivers']}\n\n"
+Use ONLY the information inside the metadata block to write the documentation.
+DO NOT repeat, restate, quote, or output anything from inside the metadata block.
+DO NOT guess or hallucinate any components.
+Include a section ONLY if its components appear in the metadata block.
 
-f"## 3. Adapters Used\n{meta['adapters']}\n\n"
+FOLLOW THE EXACT DOCUMENT STRUCTURE BELOW:
 
-f"## 4. Key Functional Steps\n"
-f"<Generate only relevant subsections based on metadata.>\n\n"
+# Technical Documentation – {meta['flowname']}
 
-f"## 5. Mapping Logic Summary\n"
-f"<Describe mapping logic only if mappings exist.>\n\n"
+## 1. Overview
+<Generate a short overview of this iFlow based ONLY on detected components.>
 
-f"## 6. Groovy Script Summary\nScripts detected: {meta['scripts']}\n"
-f"<Explain purpose only if scripts exist.>\n\n"
+## 2. Systems Involved
+### Sender Systems
+{meta["senders"]}
 
-f"## 7. Error Handling Approach\n"
-f"<Describe error handling based on gateways/subprocesses if present.>\n\n"
+### Receiver Systems
+{meta["receivers"]}
 
-f"## 8. High-Level Architecture Diagram (Mermaid)\n"
-f"{diagram}\n\n"
+## 3. Adapters Used
+{meta["adapters"]}
 
-f"## 9. Component Inventory (Extracted)\n"
-f"- Start Events: {meta['startevents']}\n"
-f"- End Events: {meta['endevents']}\n"
-f"- Service Tasks: {meta['servicetasks']}\n"
-f"- Call Activities: {meta['callactivities']}\n"
-f"- Gateways: {meta['gateways']}\n"
-f"- SubProcesses: {meta['subprocesses']}\n"
-f"- Scripts: {meta['scripts']}\n"
-f"- Mappings: {meta['mappings']}\n\n"
+## 4. Key Functional Steps
+<Generate ONLY the subsections that apply. Use metadata checks.>
 
-"REFERENCE (Do Not Output):\n"
-+ json.dumps(meta, indent=2)
-)
+### 4.1 Initialization
+<Include only if start events, property setups, or initialization scripts exist.>
+
+### 4.2 Execution Mode / Gateway Logic
+<Include only if gateways exist.>
+
+### 4.3 Source System Data Retrieval
+<Include only if service tasks exist. List them.>
+
+### 4.4 Message Preprocessing
+<Include only if scripts or content modifiers exist.>
+
+### 4.5 Message Splitting and Aggregation
+<Include only if any splitter or callActivities exist.>
+
+### 4.6 Transformation / Mapping
+<Include only if mappings exist.>
+
+### 4.7 Outbound Call to Receiver System
+<Describe based ONLY on detected adapters and receivers.>
+
+### 4.8 Response Handling
+<Include only if response-handling subprocess or callActivity exists.>
+
+### 4.9 Exception Handling
+<Include only if subprocesses or error-handling flows exist.>
+
+### 4.10 Flow Finalization
+<Include only if end events exist.>
+
+## 5. Mapping Logic Summary
+<Explain mapping logic only if mappings exist.>
+
+## 6. Groovy Script Summary
+Scripts detected: {meta["scripts"]}
+<Explain their purpose ONLY if they exist.>
+
+## 7. Error Handling Approach
+<Explain error handling based ONLY on detected gateways and subprocesses.>
+
+## 8. High-Level Architecture Diagram (Mermaid)
+{diagram}
+
+## 9. Component Inventory (Extracted)
+- Start Events: {meta["startevents"]}
+- End Events: {meta["endevents"]}
+- Service Tasks: {meta["servicetasks"]}
+- Call Activities: {meta["callactivities"]}
+- Gateways: {meta["gateways"]}
+- SubProcesses: {meta["subprocesses"]}
+- Scripts: {meta["scripts"]}
+- Mappings: {meta["mappings"]}
+"""
 
 
 # ---------------------------------------------------------
-# Call DeepSeek (Ollama)
+# Call DeepSeek
 # ---------------------------------------------------------
 def call_llm(prompt):
     res = requests.post(OLLAMA_URL, json={
@@ -162,7 +202,7 @@ def call_llm(prompt):
 
 
 # ---------------------------------------------------------
-# Write MD + DOCX
+# Write MD and DOCX
 # ---------------------------------------------------------
 def write_output(path, markdown):
 
@@ -174,14 +214,13 @@ def write_output(path, markdown):
 
     mdfile.write_text(markdown, encoding="utf-8")
 
-    # Generate DOCX through Pandoc (best-effort)
     try:
         subprocess.run(["pandoc", str(mdfile), "-o", str(docxfile)], check=True)
     except Exception:
         pass
 
-    print(f"Created: {mdfile}")
-    print(f"Created: {docxfile}")
+    print(f"Generated: {mdfile}")
+    print(f"Generated: {docxfile}")
 
 
 # ---------------------------------------------------------
@@ -190,14 +229,14 @@ def write_output(path, markdown):
 if __name__ == "__main__":
 
     for f in sys.argv[1:]:
-
-        print(f"Processing: {f}")
+        print(f"Processing {f}")
 
         meta = parse_iflw(f)
         diagram = generate_mermaid(meta)
         prompt = build_prompt(meta, diagram)
+
         markdown = call_llm(prompt)
 
         write_output(f, markdown)
 
-    print("Completed.")
+    print("Done.")
