@@ -4,19 +4,28 @@ import json
 import requests
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import subprocess
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
 
+# ---------------------------------------------------------
+# Parse .iflw BPMN file
+# ---------------------------------------------------------
 def parse_iflw(path):
     meta = {
-        "flowname": Path(path).stem.replace(" ", "_"),
+        "flowname": Path(path).stem,
         "senders": [],
         "receivers": [],
         "adapters": [],
         "scripts": [],
         "mappings": [],
-        "steps": []
+        "gateways": [],
+        "subprocesses": [],
+        "servicetasks": [],
+        "callactivities": [],
+        "startevents": [],
+        "endevents": []
     }
 
     try:
@@ -24,98 +33,171 @@ def parse_iflw(path):
         root = tree.getroot()
 
         for elem in root.iter():
-            tag = elem.tag.split("}")[-1].lower()
+            tag = elem.tag.split("}")[-1]
             name = elem.attrib.get("name") or elem.attrib.get("id") or tag
 
-            if "sender" in tag:
+            # Sender / Receiver
+            if "sender" in tag.lower():
                 meta["senders"].append(name)
 
-            if "receiver" in tag:
+            if "receiver" in tag.lower():
                 meta["receivers"].append(name)
 
-            if "adapter" in tag:
+            # Adapters
+            if "adapter" in tag.lower():
                 meta["adapters"].append(name)
 
-            if "script" in tag or "groovy" in tag or "scripttask" in tag:
+            # Scripts
+            if "script" in tag.lower() or "groovy" in tag.lower():
                 meta["scripts"].append(name)
 
-            if "mapping" in tag:
+            # Mapping
+            if "mapping" in tag.lower():
                 meta["mappings"].append(name)
 
-            meta["steps"].append(name)
+            # BPMN elements
+            if tag == "serviceTask":
+                meta["servicetasks"].append(name)
+
+            if tag == "callActivity":
+                meta["callactivities"].append(name)
+
+            if tag == "exclusiveGateway" or tag == "parallelGateway" or tag == "inclusiveGateway":
+                meta["gateways"].append(name)
+
+            if tag == "subProcess":
+                meta["subprocesses"].append(name)
+
+            if tag == "startEvent":
+                meta["startevents"].append(name)
+
+            if tag == "endEvent":
+                meta["endevents"].append(name)
 
     except Exception as e:
-        meta["error"] = f"XML parse error: {e}"
+        meta["error"] = f"Failed to parse .iflw: {e}"
 
     return meta
 
 
-def create_mermaid(meta):
-    steps = [s.replace(" ", "_") for s in meta["steps"]]
-    lines = ["flowchart LR"]
+# ---------------------------------------------------------
+# Generate improved Mermaid diagram
+# ---------------------------------------------------------
+def generate_mermaid(meta):
 
-    prev = None
-    for step in steps:
-        if prev is not None:
-            lines.append(f"    {prev} --> {step}")
-        prev = step
+    sender = meta["senders"][0] if meta["senders"] else "Sender"
+    receiver = meta["receivers"][0] if meta["receivers"] else "Receiver"
 
-    return "\n".join(lines)
+    return f"""
+```mermaid
+graph TD
+    {sender} --> CPI
+    CPI --> {receiver}
+```
+"""
 
 
-def build_prompt(meta, mermaid):
+# ---------------------------------------------------------
+# Build final standardized documentation
+# ---------------------------------------------------------
+def build_prompt(meta, diagram):
+
     return (
-        "You are an SAP CPI documentation expert.\n\n"
-        f"# Technical Documentation for iFlow: {meta['flowname']}\n\n"
-        "## 1. High-level architecture\n<describe architecture>\n\n"
-        "## 2. Purpose\n<short purpose>\n\n"
-        f"## 3. Sender/Receiver\nSenders: {meta['senders']}\nReceivers: {meta['receivers']}\n\n"
-        f"## 4. Adapters Used\n{meta['adapters']}\n\n"
-        "## 5. Steps Explanation\n<describe steps>\n\n"
-        f"## 6. Mapping Logic\n{meta['mappings']}\n\n"
-        f"## 7. Groovy Scripts\n{meta['scripts']}\n\n"
-        "## 8. Error Handling\n<explain error logic>\n\n"
-        "## 9. Mermaid Diagram\n"
-        f"```mermaid\n{mermaid}\n```\n\n"
-        "REFERENCE DATA (DO NOT OUTPUT):\n"
-        f"{json.dumps(meta, indent=2)}"
-    )
+f"You are an SAP CPI documentation expert.\n"
+f"Generate documentation STRICTLY in the exact format below.\n"
+f"DO NOT hallucinate missing elements—only describe components present in metadata.\n\n"
+
+f"# Technical Documentation – {meta['flowname']}\n\n"
+
+f"## 1. Overview\n"
+f"<Generate a short overview of this iFlow using only available metadata.>\n\n"
+
+f"## 2. Systems Involved\n"
+f"### Sender Systems\n{meta['senders']}\n\n"
+f"### Receiver Systems\n{meta['receivers']}\n\n"
+
+f"## 3. Adapters Used\n{meta['adapters']}\n\n"
+
+f"## 4. Key Functional Steps\n"
+f"<Generate only relevant subsections based on metadata.>\n\n"
+
+f"## 5. Mapping Logic Summary\n"
+f"<Describe mapping logic only if mappings exist.>\n\n"
+
+f"## 6. Groovy Script Summary\nScripts detected: {meta['scripts']}\n"
+f"<Explain purpose only if scripts exist.>\n\n"
+
+f"## 7. Error Handling Approach\n"
+f"<Describe error handling based on gateways/subprocesses if present.>\n\n"
+
+f"## 8. High-Level Architecture Diagram (Mermaid)\n"
+f"{diagram}\n\n"
+
+f"## 9. Component Inventory (Extracted)\n"
+f"- Start Events: {meta['startevents']}\n"
+f"- End Events: {meta['endevents']}\n"
+f"- Service Tasks: {meta['servicetasks']}\n"
+f"- Call Activities: {meta['callactivities']}\n"
+f"- Gateways: {meta['gateways']}\n"
+f"- SubProcesses: {meta['subprocesses']}\n"
+f"- Scripts: {meta['scripts']}\n"
+f"- Mappings: {meta['mappings']}\n\n"
+
+"REFERENCE (Do Not Output):\n"
++ json.dumps(meta, indent=2)
+)
 
 
+# ---------------------------------------------------------
+# Call DeepSeek (Ollama)
+# ---------------------------------------------------------
 def call_llm(prompt):
-    r = requests.post(OLLAMA_URL, json={
+    res = requests.post(OLLAMA_URL, json={
         "model": "deepseek-r1:1.5b",
         "prompt": prompt,
         "stream": False
     })
-    r.raise_for_status()
-    return r.json().get("response", "")
+    res.raise_for_status()
+    return res.json().get("response", "")
 
 
-def write_output(path, markdown, mermaid):
-    flow = Path(path).stem.replace(" ", "_")
-    outdir = Path(path).parent.joinpath("docs")
-    outdir.mkdir(parents=True, exist_ok=True)
+# ---------------------------------------------------------
+# Write MD + DOCX
+# ---------------------------------------------------------
+def write_output(path, markdown):
 
-    md_path = outdir / f"{flow}_Documentation.md"
-    mmd_path = outdir / f"{flow}.mmd"
+    outdir = Path(path).parent / "docs"
+    outdir.mkdir(exist_ok=True, parents=True)
 
-    md_path.write_text(markdown, encoding="utf-8")
-    mmd_path.write_text(mermaid, encoding="utf-8")
+    mdfile = outdir / f"{Path(path).stem}_Documentation.md"
+    docxfile = outdir / f"{Path(path).stem}_Documentation.docx"
 
-    print(f"Generated: {md_path}")
-    print(f"Generated: {mmd_path}")
+    mdfile.write_text(markdown, encoding="utf-8")
+
+    # Generate DOCX through Pandoc (best-effort)
+    try:
+        subprocess.run(["pandoc", str(mdfile), "-o", str(docxfile)], check=True)
+    except Exception:
+        pass
+
+    print(f"Created: {mdfile}")
+    print(f"Created: {docxfile}")
 
 
+# ---------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------
 if __name__ == "__main__":
-    for iflw in sys.argv[1:]:
-        print(f"Processing {iflw}")
 
-        meta = parse_iflw(iflw)
-        mermaid = create_mermaid(meta)
-        prompt = build_prompt(meta, mermaid)
+    for f in sys.argv[1:]:
 
+        print(f"Processing: {f}")
+
+        meta = parse_iflw(f)
+        diagram = generate_mermaid(meta)
+        prompt = build_prompt(meta, diagram)
         markdown = call_llm(prompt)
-        write_output(iflw, markdown, mermaid)
 
-    print("Done: documentation + Mermaid generated.")
+        write_output(f, markdown)
+
+    print("Completed.")
