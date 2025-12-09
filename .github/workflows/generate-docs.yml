@@ -37,8 +37,9 @@ jobs:
 
       - name: Convert Mermaid to PNG
         run: |
-          find cpi-artifacts/${{ github.event.inputs.package_id }} -type f -name "*.mmd" | while read file; do
-            tools/generate_png.sh "$file"
+          find "cpi-artifacts/${{ github.event.inputs.package_id }}" -type f -name "*.mmd" | while read file; do
+            echo "Processing $file"
+            "${{ github.workspace }}/tools/generate_png.sh" "$file"
           done
 
       - name: Commit results
