@@ -1,0 +1,56 @@
+name: Generate CPI Docs + PNG Diagrams
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq pandoc npm
+          npm install -g @mermaid-js/mermaid-cli
+
+      - name: Start Ollama
+        run: |
+          docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
+          sleep 10
+          docker exec ollama ollama pull deepseek-r1:1.5b
+
+      - name: Set permissions
+        run: chmod +x tools/*.sh tools/*.py
+
+      - name: Run documentation generator
+        run: tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
+
+      - name: Convert Mermaid to PNG
+        run: |
+          find cpi-artifacts/${{ github.event.inputs.package_id }} -type f -name "*.mmd" | while read file; do
+            tools/generate_png.sh "$file"
+          done
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add cpi-artifacts || true
+          
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          
+          git commit -m "Generated documentation + PNG diagrams"
+          git push || true
