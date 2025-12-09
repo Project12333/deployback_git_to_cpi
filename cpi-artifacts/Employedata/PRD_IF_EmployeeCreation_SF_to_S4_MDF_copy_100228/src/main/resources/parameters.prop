@@ -1,0 +1,36 @@
+#Tue Dec 09 09:43:29 UTC 2025
+S4_Address=https\://my406814.s4hana.cloud.sap/sap/bc/srt/scs_ext/sap/workforcepersonmasterdatarepli
+ManualStartDate=2023-01-25T22\:00\:00.000
+Address=https\://api44.sapsf.com
+FileName=
+SF_TimeOut=10
+OA_Company=Maveric
+LastModifiedOn=
+OA_Password=Mav@54321
+S4_Credentials=S4_Credential
+EnablePayloadLogging=true
+SF_Address=https\://api44.sapsf.com/
+SP_HTTPQuery=api-version\=2016-06-01&sp\=%2Ftriggers%2Fmanual%2Frun&sv\=1.0&sig\=Yxk2Y9aKyWiqnPGmdfzvrgiQ0iFZ0T5RUACCMxhj_q0
+SF_Authentication=Basic
+SP_Username=SPIntegrationDevUser
+To=Surekha.Genji@motiveminds.com,vishnu.vardhan@motiveminds.com
+LastSuccessfulRunDateTime=MasterFeed_LastSuccessfulRunDT
+OA_TokenTimeout=60000
+PersonIdFilter=600002
+Initial_Run=true
+OA_User=Admin
+SF_CredentialName=Attendence_SF_Auth
+Credential\ Name=Attendence_SF_Auth
+ExeMode(Full\ |\ Delta)=
+Subject=CPI-Dev \: Error in main integration process - ${camelContext.getName}
+OA_PostAddress=https\://maveric.app.sandbox.openair.com/api.pl
+SF_Pagination=snapshot
+Refresh\ Token(Auto)=Auto
+Timer=<row><cell>dateType</cell><cell></cell></row><row><cell>timeType</cell><cell></cell></row><row><cell>dayValue</cell><cell></cell></row><row><cell>monthValue</cell><cell></cell></row><row><cell>yearValue</cell><cell></cell></row><row><cell>onWeekly</cell><cell></cell></row><row><cell>onMonthly</cell><cell></cell></row><row><cell>OnEveryMinute</cell><cell></cell></row><row><cell>fromInterval</cell><cell></cell></row><row><cell>toInterval</cell><cell></cell></row><row><cell>timeZone</cell><cell>( UTC 0\:00 ) Greenwich Mean Time(Etc/GMT)</cell></row><row><cell>secondValue</cell><cell>0</cell></row><row><cell>minutesValue</cell><cell></cell></row><row><cell>hourValue</cell><cell></cell></row><row><cell>triggerType</cell><cell>simple</cell></row><row><cell>noOfSchedules</cell><cell>1</cell></row><row><cell>schedule1</cell><cell>fireNow\=true</cell></row>
+OA_PostTimeout=60000
+OA_TokenAddress=https\://maveric.app.sandbox.openair.com/login/oauth2/v1/token
+SP_Passsword=a11Black$
+SP_HTTPTimeout=60000
+SF_Credentials=Attendence_SF_Auth
+Key=WiNpbSQn32wGVZKzKI7u
+SP_HTTPAddress=https\://prod-12.centralindia.logic.azure.com\:443/workflows/e482f138eaf64c2ab86cdf1e86d6e9ce/triggers/manual/paths/invoke

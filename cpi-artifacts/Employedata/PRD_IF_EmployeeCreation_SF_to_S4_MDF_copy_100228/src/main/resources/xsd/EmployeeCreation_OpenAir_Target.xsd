@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" attributeFormDefault="unqualified" elementFormDefault="qualified">
+  <xs:element name="request">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Auth">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Login">
+                <xs:complexType>
+                  <xs:sequence>
+                     <xs:element name="company" type="xs:string"/>
+                    <xs:element name="user" type="xs:string"/>
+                    <xs:element name="password" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="CreateUser">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Company">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="nickname" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="User">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="nickname" type="xs:string"/>
+                    <xs:element name="addr">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="Address">
+                            <xs:complexType>
+                              <xs:sequence>
+                                <xs:element name="salutation" type="xs:string"/>
+                                <xs:element name="first" type="xs:string"/>
+                                <xs:element name="middle" type="xs:string"/>
+                                <xs:element name="last" type="xs:string"/>
+                                <xs:element name="email" type="xs:string"/>
+                                <xs:element name="mobile" type="xs:long"/>
+                              </xs:sequence>
+                            </xs:complexType>
+                          </xs:element>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element maxOccurs="1" minOccurs="0" name="timezone" type="xs:short"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="is_user_schedule" type="xs:byte"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="WorkCalendarPrismCode__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="customaddress1__c" type="xs:byte"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="customaddress2__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_address3__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="city_name__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="State_name__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_country_name__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_pincode__c" type="xs:int"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_DateOfBirth__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Gender__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_DateOfJoining__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Employee_Position__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Employee_Designation__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_EmploymentType__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_ContractType__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="Cust_pay_grade__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_CTCEffectiveDate__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_CTCHourly__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="currency" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_CTCEffectiveEndDate__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_PersonalEmail__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="Mediclaim_Applicable__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Inactivated_In_Prism__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_ResignationDate__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_RelivingDate__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="EmployeeName__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Employee_MaritalStatus__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="ReportingManagerName__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="ReportingManagerPrismCode__c" type="xs:int"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="EmployeePrismCode__c" type="xs:int"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="FunctionalManagerName__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="FunctionalManagerPrismCode__c" type="xs:int"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_employment_status__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_employee_notice_period__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="EmployeeDepartmentType__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Association_Date__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_costCenterName__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="probationary_Period_completed__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="saml_auth__c" type="xs:byte"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="password" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="externalid" type="xs:int"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_DepartmentUniqueId__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_CostCenterUniqueId__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_BaseLocationUniqueId__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Employee_BU_Prism_Code__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Employee_Org_struct_Prism_Code__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="cust_Employee_Cluster_Code__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="EmployeeDateUpdated__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="UserModifiedDateTime__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="FLX_Employee_Cluster__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="FLX_EMP_Operational_Unit__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="FLX_EMP_BU__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="FLX_Employee_Group_Company__c" type="xs:string"/>
+                    <xs:element maxOccurs="1" minOccurs="0" name="FLX_Emp_Legal_Entity__c" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+            <xs:attribute name="type" type="xs:string"/>
+            <xs:attribute name="enable_custom" type="xs:byte"/>
+            <xs:attribute name="lookup" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="API_version" type="xs:float"/>
+      <xs:attribute name="client" type="xs:string"/>
+      <xs:attribute name="client_ver" type="xs:float"/>
+      <xs:attribute name="namespace" type="xs:string"/>
+      <xs:attribute name="key" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
