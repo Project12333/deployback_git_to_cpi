@@ -10,7 +10,7 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 
 
 # ---------------------------------------------------------
-# Parse .iflw BPMN file into metadata dictionary
+# Parse .iflw BPMN file
 # ---------------------------------------------------------
 def parse_iflw(path):
     meta = {
@@ -42,7 +42,6 @@ def parse_iflw(path):
             if "adapter" in low: meta["adapters"].append(name)
             if "script" in low or "groovy" in low: meta["scripts"].append(name)
             if "mapping" in low: meta["mappings"].append(name)
-
             if tag == "serviceTask": meta["servicetasks"].append(name)
             if tag == "callActivity": meta["callactivities"].append(name)
             if tag in ["exclusiveGateway","parallelGateway","inclusiveGateway"]:
@@ -58,40 +57,38 @@ def parse_iflw(path):
 
 
 # ---------------------------------------------------------
-# Mermaid architecture diagram
+# Mermaid diagram
 # ---------------------------------------------------------
 def generate_mermaid(meta):
-    sender = meta["senders"][0] if meta["senders"] else "Sender"
-    receiver = meta["receivers"][0] if meta["receivers"] else "Receiver"
-
+    s = meta["senders"][0] if meta["senders"] else "Sender"
+    r = meta["receivers"][0] if meta["receivers"] else "Receiver"
     return f"""
 ```mermaid
 graph TD
-    {sender} --> CPI
-    CPI --> {receiver}
+    {s} --> CPI
+    CPI --> {r}
 ```
 """
 
 
 # ---------------------------------------------------------
-# Build the MAIN PROMPT (metadata NOT included here!)
+# Build prompt (NO METADATA INCLUDED!)
 # ---------------------------------------------------------
 def build_prompt(meta, diagram):
-    
+
     return f"""
 You are an SAP CPI documentation expert.
-Use ONLY the metadata provided in the context (NOT visible here).
 
-NEVER output or mention metadata fields directly.
-NEVER hallucinate missing values.
-Generate ONLY sections supported by metadata.
+You will receive metadata in hidden model context.
+DO NOT restate, summarize, or output metadata keys.
+Use it ONLY to generate CPI documentation sections that apply.
 
-Follow EXACTLY this structure:
+Follow this EXACT document structure:
 
 # Technical Documentation – {meta['flowname']}
 
 ## 1. Overview
-<Short overview, based only on available metadata.>
+(Short overview)
 
 ## 2. Systems Involved
 ### Sender Systems
@@ -104,110 +101,114 @@ Follow EXACTLY this structure:
 <List adapters>
 
 ## 4. Key Functional Steps
-<Generate ONLY subsections that apply based on metadata.>
+<Only output subsections supported by metadata>
 
 ### 4.1 Initialization
-<Only if start events or initialization steps exist>
+<Only if start events or init steps exist>
 
 ### 4.2 Execution Mode / Gateway Logic
 <Only if gateways exist>
 
 ### 4.3 Source System Data Retrieval
-<Only if service tasks exist. List names.>
+<Only if service tasks exist — list them>
 
 ### 4.4 Message Preprocessing
-<Only if Groovy/scripts/content modifiers exist>
+<Only if scripts exist>
 
 ### 4.5 Message Splitting and Aggregation
-<Only if callActivities or multiple branches exist>
+<Only if callActivities exist>
 
 ### 4.6 Transformation / Mapping
 <Only if mappings exist>
 
 ### 4.7 Outbound Call to Receiver System
-<Only if receivers + adapters exist>
+<Only if receivers+adapters exist>
 
 ### 4.8 Response Handling
-<Only if relevant subprocesses or callactivities detected>
+<Only if subprocess names indicate response handling>
 
 ### 4.9 Exception Handling
-<Only if subprocesses exist>
+<Only if subprocesses or gateways exist>
 
 ### 4.10 Flow Finalization
 <Only if end events exist>
 
 ## 5. Mapping Logic Summary
-<Only if metadata['mappings'] contains values>
+<Only if mappings exist>
 
 ## 6. Groovy Script Summary
-<Only if metadata['scripts'] contains scripts>
+<Only if scripts exist>
 
 ## 7. Error Handling Approach
-<Explain exceptions only if subprocesses or gateways are present>
+<Only if gateways/subprocesses exist>
 
 ## 8. High-Level Architecture Diagram (Mermaid)
 {diagram}
 
 ## 9. Component Inventory (Extracted)
-- Start Events
-- End Events
-- Service Tasks
-- Call Activities
-- Gateways
-- SubProcesses
-- Scripts
-- Mappings
+<List all extracted items>
 """
 
 
 # ---------------------------------------------------------
-# Call DeepSeek using OLLAMA CONTEXT
+# Convert metadata INTO CONTEXT TOKENS (without showing text)
+# ---------------------------------------------------------
+def create_context(metadata):
+    """
+    We send metadata to the model in a *hidden* message using internal tokenization.
+    This prevents the model from reading or imitating metadata text.
+    """
+    resp = requests.post(
+        OLLAMA_URL,
+        json={
+            "model": "deepseek-r1:1.5b",
+            "prompt": json.dumps(metadata)
+        }
+    )
+    resp.raise_for_status()
+    return resp.json().get("context", [])
+
+
+# ---------------------------------------------------------
+# Generate documentation
 # ---------------------------------------------------------
 def call_llm(prompt, meta):
 
-    # convert metadata to token context (list of ints)
-    meta_str = json.dumps(meta)
-    ctx_req = requests.post(
-        OLLAMA_URL,
-        json={"model": "deepseek-r1:1.5b", "prompt": meta_str, "raw": True}
-    )
-    ctx_tokens = ctx_req.json().get("context", [])
+    ctx = create_context(meta)
 
-    # send prompt + context correctly
-    res = requests.post(
+    resp = requests.post(
         OLLAMA_URL,
         json={
             "model": "deepseek-r1:1.5b",
             "prompt": prompt,
-            "context": ctx_tokens,
+            "context": ctx,     # THIS IS THE FIX
             "stream": False
         }
     )
-
-    res.raise_for_status()
-    return res.json().get("response", "")
+    resp.raise_for_status()
+    return resp.json().get("response", "")
 
 
 # ---------------------------------------------------------
-# Write documentation files
+# Write output
 # ---------------------------------------------------------
 def write_output(path, markdown):
 
     outdir = Path(path).parent / "docs"
     outdir.mkdir(exist_ok=True, parents=True)
 
-    mdfile = outdir / f"{Path(path).stem}_Documentation.md"
-    docxfile = outdir / f"{Path(path).stem}_Documentation.docx"
+    md = outdir / f"{Path(path).stem}_Documentation.md"
+    doc = outdir / f"{Path(path).stem}_Documentation.docx"
 
-    mdfile.write_text(markdown, encoding="utf-8")
+    md.write_text(markdown, encoding="utf-8")
 
     try:
-        subprocess.run(["pandoc", str(mdfile), "-o", str(docxfile)], check=True)
+        subprocess.run(["pandoc", str(md), "-o", str(doc)], check=True)
     except Exception:
         pass
 
-    print(f"Generated: {mdfile}")
-    print(f"Generated: {docxfile}")
+    print(f"Generated: {md}")
+    print(f"Generated: {doc}")
 
 
 # ---------------------------------------------------------
@@ -216,7 +217,8 @@ def write_output(path, markdown):
 if __name__ == "__main__":
 
     for f in sys.argv[1:]:
-        print(f"Processing:", f)
+
+        print("Processing:", f)
 
         meta = parse_iflw(f)
         diagram = generate_mermaid(meta)
