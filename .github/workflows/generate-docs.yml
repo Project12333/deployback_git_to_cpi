@@ -33,7 +33,7 @@ jobs:
         run: chmod +x tools/*.sh tools/*.py
 
       - name: Run documentation generator
-        run: tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
+        run: tools/generate_docs.sh "${{ github.event.inputs.package_id }}"
 
       - name: Convert Mermaid to PNG
         run: |
