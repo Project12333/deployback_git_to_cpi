@@ -101,59 +101,65 @@ def determine_version(flow_name):
 # Build Prompt Structure
 # ---------------------------------------------------------
 def build_prompt(meta, diagram):
+    # NOTE:
+    # - Keep this string a NORMAL string (not an f-string) so that "{{...}}" stays as double-brace tokens.
+    # - We concatenate diagram at the end because diagram contains backticks/mermaid and can be inserted safely.
+    prompt = (
+        # Top logos for Markdown preview (GitHub): point to repo images
+        "<table><tr>"
+        f"<td><img src=\"tools/logos/sap.png\" alt=\"SAP\" width=\"180\"></td>"
+        f"<td align=\"right\"><img src=\"tools/logos/motiveminds.png\" alt=\"Motiveminds\" width=\"180\"></td>"
+        "</tr></table>\n\n"
 
-    prompt = f"""
-Document: {{flow_name}}
-Author: {{author}}
-Date: {{date}}
-Version: {{version}}
+        # Metadata placeholders (these will be replaced in write_output)
+        "Document: {{flow_name}}\n"
+        "Author: {{author}}\n"
+        "Date: {{date}}\n"
+        "Version: {{version}}\n\n"
 
-# 1. Introduction
+        # Flow name as the main heading (this becomes Heading 1 in DOCX)
+        "# {{flow_name}}\n\n"
 
-## 1.1 Purpose
-<Describe purpose of the integration flow.>
+        "# 1. Introduction\n\n"
+        "## 1.1 Purpose\n"
+        "<Describe purpose of the integration flow.>\n\n"
+        "## 1.2 Scope\n"
+        "<Describe the scope based on metadata.>\n\n"
 
-## 1.2 Scope
-<Describe the scope based on metadata.>
+        "# 2. Integration Overview\n\n"
+        "## 2.1 Integration Architecture\n"
+        "Explain architecture at a high level.\n\n"
+        "## 2.2 Integration Components\n"
+        f"Sender Systems: {meta['senders']}\n\n"
+        f"Receiver Systems: {meta['receivers']}\n\n"
+        f"Adapters Used: {meta['adapters']}\n\n"
 
-# 2. Integration Overview
+        "# 3. Integration Scenarios\n\n"
+        "## 3.1 Scenario Description\n"
+        "<Describe integration scenario.>\n\n"
+        "## 3.2 Data Flows\n"
+        "<Explain messages and transformations.>\n\n"
+        "## 3.3 Security Requirements\n"
+        "<Describe authentication, tokens, etc.>\n\n"
 
-## 2.1 Integration Architecture
-Explain architecture in high level.
+        "# 4. Error Handling and Logging\n"
+        "<Describe error handling logic.>\n\n"
 
-## 2.2 Integration Components
-Sender Systems: {meta["senders"]}
-Receiver Systems: {meta["receivers"]}
-Adapters Used: {meta["adapters"]}
+        "# 5. Testing Validation\n"
+        "<Provide high-level UAT/scenario descriptions.>\n\n"
 
-# 3. Integration Scenarios
+        "# 6. Reference Documents\n"
+        "<List mapping sheets, API docs, etc.>\n\n"
 
-## 3.1 Scenario Description
-<Describe integration scenario.>
+        "# High-Level Process Flow Diagram\n\n"
+    )
 
-## 3.2 Data Flows
-<Explain messages and transformations.>
+    # append diagram (it can contain backticks / mermaid)
+    prompt = prompt + diagram + "\n\n"
 
-## 3.3 Security Requirements
-<Describe authentication, tokens, etc.>
+    # Append reference metadata (kept for debugging, not to be displayed to reader)
+    prompt = prompt + "REFERENCE METADATA (DO NOT OUTPUT THIS):\n" + json.dumps(meta, indent=2) + "\n"
 
-# 4. Error Handling and Logging
-<Describe error handling logic.>
-
-# 5. Testing Validation
-<Provide high-level UAT/scenario descriptions.>
-
-# 6. Reference Documents
-<List mapping sheets, API docs, etc.>
-
-# High-Level Process Flow Diagram
-{diagram}
-
-DO NOT include XML.
-
-REFERENCE METADATA (DO NOT OUTPUT THIS):
-{json.dumps(meta, indent=2)}
-"""
     return prompt
 
 
