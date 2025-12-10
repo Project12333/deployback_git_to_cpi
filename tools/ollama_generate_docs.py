@@ -5,12 +5,15 @@ import requests
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import subprocess
+import os
+from datetime import datetime
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
-# ----------------------------------------
-# Parse metadata from .iflw
-# ----------------------------------------
+
+# ---------------------------------------------------------
+# Parse .iflw XML
+# ---------------------------------------------------------
 def parse_iflw(path):
     meta = {
         "flowname": Path(path).stem,
@@ -53,11 +56,10 @@ def parse_iflw(path):
     return meta
 
 
-# ----------------------------------------
-# Generate high-level Mermaid diagram
-# ----------------------------------------
+# ---------------------------------------------------------
+# Mermaid Diagram
+# ---------------------------------------------------------
 def high_level_diagram(meta):
-
     sender = meta["senders"][0] if meta["senders"] else "SenderSystem"
     receiver = meta["receivers"][0] if meta["receivers"] else "ReceiverSystem"
 
@@ -68,56 +70,96 @@ def high_level_diagram(meta):
         f"    CPI -->|Processed Output| {receiver}\n"
         "```"
     )
-
     return diagram
 
 
-# ----------------------------------------
-# Build strict documentation prompt
-# ----------------------------------------
+# ---------------------------------------------------------
+# Determine version dynamically
+# ---------------------------------------------------------
+def determine_version(flow_name):
+    mode = os.getenv("VERSION_MODE", "none")
+    manual_version = os.getenv("VERSION_VALUE", "")
+
+    if mode == "manual" and manual_version:
+        return manual_version
+
+    if mode == "date":
+        return datetime.now().strftime("%Y-%m-%d")
+
+    if mode == "git-sha":
+        try:
+            sha = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+            return sha
+        except:
+            return "unknown"
+
+    return "1.0"  # default version
+
+
+# ---------------------------------------------------------
+# Build Prompt Structure
+# ---------------------------------------------------------
 def build_prompt(meta, diagram):
 
-    prompt = (
-        "You are an SAP CPI documentation expert.\n"
-        "Generate the CPI documentation STRICTLY using the EXACT TEMPLATE below.\n"
-        "DO NOT add extra sections.\n"
-        "DO NOT modify headings.\n"
-        "DO NOT output XML.\n"
-        "DO NOT hallucinate missing values.\n\n"
-        "# Consolidated Technical Report for SAP CPI iFlow: " + meta["flowname"] + "\n\n"
-        "## 1. High-level architecture\n"
-        "<Describe high-level architecture based on sender/receiver and adapters.>\n\n"
-        "## 2. Purpose of this iFlow\n"
-        "<Short purpose of this iFlow.>\n\n"
-        "## 3. Sender/Receiver systems\n"
-        "Sender Systems: " + str(meta["senders"]) + "\n"
-        "Receiver Systems: " + str(meta["receivers"]) + "\n\n"
-        "## 4. Adapter types used\n"
-        + str(meta["adapters"]) + "\n\n"
-        "## 5. Step-by-step flow explanation\n"
-        "<Explain the end-to-end steps in high-level terms.>\n\n"
-        "## 6. Mapping logic summary\n"
-        "<Explain mapping logic (XSLT, message mapping) if applicable.>\n\n"
-        "## 7. Groovy script explanations\n"
-        "Scripts detected:\n"
-        + str(meta["scripts"]) + "\n"
-        "<Explain each script's purpose.>\n\n"
-        "## 8. Error handling\n"
-        "<Explain error-handling approach.>\n\n"
-        "## 9. High-Level Process Flow Diagram\n"
-        "(Use ONLY this Mermaid diagram):\n\n"
-        + diagram +
-        "\n\n"
-        "REFERENCE METADATA (DO NOT OUTPUT THIS):\n"
-        + json.dumps(meta, indent=2)
-    )
+    prompt = f"""
+Document: {{flow_name}}
+Author: {{author}}
+Date: {{date}}
+Version: {{version}}
 
+# 1. Introduction
+
+## 1.1 Purpose
+<Describe purpose of the integration flow.>
+
+## 1.2 Scope
+<Describe the scope based on metadata.>
+
+# 2. Integration Overview
+
+## 2.1 Integration Architecture
+Explain architecture in high level.
+
+## 2.2 Integration Components
+Sender Systems: {meta["senders"]}
+Receiver Systems: {meta["receivers"]}
+Adapters Used: {meta["adapters"]}
+
+# 3. Integration Scenarios
+
+## 3.1 Scenario Description
+<Describe integration scenario.>
+
+## 3.2 Data Flows
+<Explain messages and transformations.>
+
+## 3.3 Security Requirements
+<Describe authentication, tokens, etc.>
+
+# 4. Error Handling and Logging
+<Describe error handling logic.>
+
+# 5. Testing Validation
+<Provide high-level UAT/scenario descriptions.>
+
+# 6. Reference Documents
+<List mapping sheets, API docs, etc.>
+
+# High-Level Process Flow Diagram
+{diagram}
+
+DO NOT include XML.
+
+REFERENCE METADATA (DO NOT OUTPUT THIS):
+{json.dumps(meta, indent=2)}
+"""
     return prompt
 
 
-# ----------------------------------------
-# Call LLM
-# ----------------------------------------
+# ---------------------------------------------------------
+# Call the LLM
+# ---------------------------------------------------------
 def call_llm(prompt):
     res = requests.post(OLLAMA_URL, json={
         "model": "deepseek-r1:1.5b",
@@ -128,30 +170,48 @@ def call_llm(prompt):
     return res.json().get("response", "")
 
 
-# ----------------------------------------
-# Write Markdown + DOCX
-# ----------------------------------------
+# ---------------------------------------------------------
+# Write Markdown + DOCX (with placeholders replaced)
+# ---------------------------------------------------------
 def write_output(path, markdown):
     out = Path(path).parent / "docs"
     out.mkdir(parents=True, exist_ok=True)
 
-    md = out / f"{Path(path).stem}_Documentation.md"
-    docx = out / f"{Path(path).stem}_Documentation.docx"
+    flow_name = Path(path).stem
+    today = datetime.now().strftime("%Y-%m-%d")
+    author = "Sindhu K V"
+
+    version = determine_version(flow_name)
+
+    # Replace placeholders
+    markdown = (
+        markdown.replace("{{flow_name}}", flow_name)
+                .replace("{{date}}", today)
+                .replace("{{version}}", version)
+                .replace("{{author}}", author)
+    )
+
+    md = out / f"{flow_name}_Documentation_v{version}.md"
+    docx = out / f"{flow_name}_Documentation_v{version}.docx"
 
     md.write_text(markdown, encoding="utf-8")
 
     try:
-        subprocess.run(["pandoc", str(md), "-o", str(docx)], check=True)
-    except Exception:
-        pass
+        subprocess.run([
+            "pandoc", str(md),
+            "--reference-doc=tools/reference.docx",
+            "-o", str(docx)
+        ], check=True)
+    except Exception as e:
+        print("Pandoc conversion failed:", e)
 
     print(f"Generated: {md}")
     print(f"Generated: {docx}")
 
 
-# ----------------------------------------
+# ---------------------------------------------------------
 # MAIN
-# ----------------------------------------
+# ---------------------------------------------------------
 if __name__ == "__main__":
     for f in sys.argv[1:]:
         print(f"Processing {f}")
