@@ -4,9 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       package_id:
-        required: true
         type: string
+        required: true
         description: "Enter the package folder name inside cpi-artifacts"
+
+      version_mode:
+        type: choice
+        required: false
+        default: "none"
+        description: "Select version mode"
+        options:
+          - none
+          - manual
+          - date
+          - git-sha
+
+      version_value:
+        type: string
+        required: false
+        description: "If manual mode, enter version (e.g. 1.5)"
 
 permissions:
   contents: write
@@ -19,10 +35,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify reference template
+        run: |
+          if [ ! -f tools/reference.docx ]; then
+            echo "❌ reference.docx missing!"
+            exit 1
+          else
+            echo "✔ reference.docx found"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y pandoc jq
+          sudo apt-get install -y pandoc jq python3-pip
+          pip install python-docx
 
       - name: Start Ollama container + pull fast model
         run: |
@@ -35,7 +61,10 @@ jobs:
         run: chmod +x tools/*.sh tools/*.py
 
       - name: Generate Documentation
-        run: tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
+        run: |
+          export VERSION_MODE="${{ github.event.inputs.version_mode }}"
+          export VERSION_VALUE="${{ github.event.inputs.version_value }}"
+          tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
       - name: Commit documentation
         run: |
