@@ -1,4 +1,4 @@
-name: Generate CPI Documentation
+name: Generate CPI Documentation (DeepSeek 70B)
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
       package_id:
         required: true
         type: string
+        description: "Enter the package folder name inside cpi-artifacts"
 
 permissions:
   contents: write
@@ -15,35 +16,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y pandoc jq
 
-      - name: Start Ollama
+      - name: Start Ollama + Pull DeepSeek 70B
         run: |
           docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
-          sleep 10
-          docker exec ollama ollama pull deepseek-r1:1.5b
+          sleep 20
+          docker exec ollama ollama pull deepseek-r1:70b
+          docker exec ollama ollama run deepseek-r1:70b "warmup"
 
-      - name: Prepare Tools
-        run: chmod +x tools/*.py tools/*.sh
+      - name: Make scripts executable
+        run: chmod +x tools/*.sh tools/*.py
 
       - name: Generate Documentation
-        run: tools/generate_docs.sh "${{ github.event.inputs.package_id }}"
+        run: tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
-      - name: Commit results
+      - name: Commit documentation
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add cpi-artifacts/${{ github.event.inputs.package_id }} || true
 
           if git diff --cached --quiet; then
-            echo "Nothing to commit."
+            echo "No documentation changes to commit."
             exit 0
           fi
 
-          git commit -m "Automated CPI Documentation for package ${{ github.event.inputs.package_id }}"
+          git commit -m "Generated CPI Documentation using DeepSeek 70B for package ${{ github.event.inputs.package_id }}"
           git push || true
