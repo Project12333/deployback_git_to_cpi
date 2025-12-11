@@ -12,6 +12,7 @@ on:
         type: choice
         required: false
         default: "none"
+        description: "Versioning mode"
         options:
           - none
           - manual
@@ -21,7 +22,7 @@ on:
       version_value:
         type: string
         required: false
-        description: "If manual mode, enter version (e.g. 1.5)"
+        description: "If manual mode, specify version (e.g. 1.4)"
 
 permissions:
   contents: write
@@ -34,37 +35,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify reference template
+      - name: Verify Reference Template
         run: |
           if [ ! -f tools/reference.docx ]; then
-            echo "❌ tools/reference.docx missing!"
+            echo "❌ tools/reference.docx not found!"
             exit 1
-          else
-            echo "✔ tools/reference.docx found"
           fi
+          echo "✔ reference.docx found"
 
-      - name: Install system deps
+      - name: Install System Dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y pandoc jq python3-pip docker.io
+          sudo apt-get install -y pandoc jq python3-pip
           pip3 install python-docx requests
 
-      - name: Start Ollama container + pull model
+      - name: Enable Docker (Fix for Ubuntu 24.04 containerd conflict)
+        uses: docker/setup-docker@v4
+
+      - name: Start Ollama Container & Pull Model
         run: |
-          docker run -d --name ollama -p 11434:11434 ollama/ollama:latest || true
-          sleep 10
-          docker exec ollama ollama pull deepseek-r1:1.5b || true
-          docker exec ollama ollama run deepseek-r1:1.5b "warmup" || true
+          docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
+          echo "Waiting for Ollama to start..."
+          sleep 12
+          docker exec ollama ollama pull deepseek-r1:1.5b
+          docker exec ollama ollama run deepseek-r1:1.5b "warmup"
 
-      - name: Make tools executable
-        run: chmod +x tools/*.sh tools/*.py
+      - name: Ensure Tools Are Executable
+        run: chmod +x tools/*.sh tools/*.py || true
 
-      - name: Ensure logos directory
+      - name: Ensure Logos Exist
         run: |
           mkdir -p tools/logos
-          # If repository contains logos in a chosen folder, copy them to tools/logos
-          if [ -f assets/sap.png ]; then cp assets/sap.png tools/logos/sap.png; fi
-          if [ -f assets/motiveminds.png ]; then cp assets/motiveminds.png tools/logos/motiveminds.png; fi
+          echo "Logos directory ready:"
           ls -la tools/logos || true
 
       - name: Generate Documentation
@@ -74,14 +76,17 @@ jobs:
         run: |
           tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
-      - name: Commit documentation
+      - name: Commit Documentation
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+
           git add cpi-artifacts/${{ github.event.inputs.package_id }}/docs || true
+
           if git diff --cached --quiet; then
-            echo "No changes to commit."
+            echo "✔ No new files to commit"
             exit 0
           fi
-          git commit -m "Generated CPI Documentation for package ${{ github.event.inputs.package_id }}"
+
+          git commit -m "Generated CPI Documentation for ${{ github.event.inputs.package_id }}"
           git push || true
