@@ -12,6 +12,18 @@ from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+
+# =========================================================
+# IMPORTANT: Resolve absolute paths
+# =========================================================
+BASE_DIR = Path(__file__).resolve().parent          # tools/
+ROOT_DIR = BASE_DIR.parent                          # repo root
+
+TEMPLATE_PATH = BASE_DIR / "reference.docx"
+SAP_LOGO_PATH = BASE_DIR / "logos" / "sap.png"
+MM_LOGO_PATH = BASE_DIR / "logos" / "motiveminds.png"
+
+
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "deepseek-r1:1.5b"
 
@@ -67,7 +79,7 @@ def parse_iflw(path):
 
 
 # ---------------------------------------------------------
-# High-Level Mermaid Diagram
+# Mermaid Diagram
 # ---------------------------------------------------------
 def sanitize_id(s):
     return "".join(c if c.isalnum() else "_" for c in str(s))
@@ -87,7 +99,7 @@ def high_level_diagram(meta):
 
 
 # ---------------------------------------------------------
-# Version from workflow inputs
+# Version
 # ---------------------------------------------------------
 def determine_version(flow_name):
     mode = os.getenv("VERSION_MODE", "none")
@@ -110,36 +122,22 @@ def determine_version(flow_name):
 
 
 # ---------------------------------------------------------
-# Build DeepSeek prompt
+# Build prompt for DeepSeek
 # ---------------------------------------------------------
 def build_prompt(meta, diagram):
     return (
-        "You are a senior SAP CPI integration architect. Produce a structured "
-        "technical specification in Markdown following EXACT sections:\n\n"
-        "1. Introduction\n"
-        "  1.1 Purpose\n"
-        "  1.2 Scope\n\n"
-        "2. Integration Overview\n"
-        "  2.1 Integration Architecture\n"
-        "  2.2 Integration Components\n\n"
-        "3. Integration Scenarios\n"
-        "  3.1 Scenario Description\n"
-        "  3.2 Data Flows\n"
-        "  3.3 Security Requirements\n\n"
-        "4. Error Handling and Logging\n"
-        "5. Testing Validation\n"
-        "6. Reference Documents\n\n"
-        "Appendix: High-Level Process Flow Diagram\n\n"
-        "Use the following metadata:\n"
-        f"{json.dumps(meta, indent=2)}\n\n"
-        "Insert this Mermaid diagram exactly under the Appendix:\n"
-        f"{diagram}\n\n"
-        "Output ONLY the markdown, no explanations."
+        "Produce a structured technical specification with EXACT sections:\n"
+        "1.1 Purpose\n1.2 Scope\n"
+        "2.1 Integration Architecture\n2.2 Integration Components\n"
+        "3.1 Scenario Description\n3.2 Data Flows\n3.3 Security Requirements\n"
+        "4. Error Handling and Logging\n5. Testing Validation\n6. Reference Documents\n\n"
+        "Appendix Diagram:\n" + diagram +
+        "\nMetadata:\n" + json.dumps(meta, indent=2)
     )
 
 
 # ---------------------------------------------------------
-# Call DeepSeek via Ollama
+# Call DeepSeek using Ollama
 # ---------------------------------------------------------
 def call_llm(prompt):
     res = requests.post(
@@ -153,20 +151,18 @@ def call_llm(prompt):
 
 
 # ---------------------------------------------------------
-# Extract markdown sections
+# Extract sections
 # ---------------------------------------------------------
 def extract_section(md, heading):
     lines = md.splitlines()
-    result = []
-    start = False
+    result, capture = [], False
 
-    for i, line in enumerate(lines):
+    for line in lines:
         if line.strip().startswith(heading):
-            start = True
+            capture = True
             continue
-
-        if start:
-            if line.strip().startswith(tuple("0123456789")) or line.startswith("#"):
+        if capture:
+            if line.strip().startswith(tuple("1234567890#")):
                 break
             result.append(line)
 
@@ -184,132 +180,110 @@ def extract_mermaid(md):
 
 
 # ---------------------------------------------------------
-# Replace placeholders in DOCX template
+# Replace placeholders inside DOCX
 # ---------------------------------------------------------
 def render_docx_from_template(template_path, output_path, fields):
     doc = Document(template_path)
 
     def replace_para(p):
-        for key, value in fields.items():
-            placeholder = "{{" + key + "}}"
-            if placeholder in p.text:
-                for run in p.runs:
-                    run.text = run.text.replace(placeholder, value)
-
-    def replace_table(t):
-        for row in t.rows:
-            for cell in row.cells:
-                for p in cell.paragraphs:
-                    replace_para(p)
+        for key, val in fields.items():
+            tag = "{{" + key + "}}"
+            if tag in p.text:
+                for r in p.runs:
+                    r.text = r.text.replace(tag, val)
 
     for p in doc.paragraphs:
         replace_para(p)
 
-    for t in doc.tables:
-        replace_table(t)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    replace_para(p)
 
     doc.save(output_path)
 
 
 # ---------------------------------------------------------
-# Insert Logos into Header
+# Insert Logos in Header
 # ---------------------------------------------------------
 def inject_logos(docx_path, sap_logo, mm_logo):
-    try:
-        doc = Document(docx_path)
-        header = doc.sections[0].header
+    doc = Document(docx_path)
+    header = doc.sections[0].header
 
-        # Clear existing content
-        for p in header.paragraphs:
-            p.clear()
+    # Clear
+    for p in header.paragraphs:
+        p.clear()
 
-        table = header.add_table(rows=1, cols=2)
-        table.autofit = False
-        table.columns[0].width = Inches(3)
-        table.columns[1].width = Inches(3)
+    table = header.add_table(rows=1, cols=2)
+    table.autofit = False
+    table.columns[0].width = Inches(3)
+    table.columns[1].width = Inches(3)
 
-        # SAP logo left
-        left = table.rows[0].cells[0].paragraphs[0]
-        run_left = left.add_run()
-        if os.path.exists(sap_logo):
-            run_left.add_picture(sap_logo, width=Inches(1.4))
-        left.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # Left logo
+    left = table.rows[0].cells[0].paragraphs[0]
+    run_left = left.add_run()
+    if os.path.exists(sap_logo):
+        run_left.add_picture(str(sap_logo), width=Inches(1.3))
+    left.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-        # Motiveminds logo right
-        right = table.rows[0].cells[1].paragraphs[0]
-        run_right = right.add_run()
-        if os.path.exists(mm_logo):
-            run_right.add_picture(mm_logo, width=Inches(1.4))
-        right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    # Right logo
+    right = table.rows[0].cells[1].paragraphs[0]
+    run_right = right.add_run()
+    if os.path.exists(mm_logo):
+        run_right.add_picture(str(mm_logo), width=Inches(1.3))
+    right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-        doc.save(docx_path)
-        print(f"✔ Logos inserted into: {docx_path}")
-
-    except Exception as e:
-        print("⚠ Error inserting logos:", e)
+    doc.save(docx_path)
 
 
 # ---------------------------------------------------------
-# Write final DOCX
+# Write Final Document
 # ---------------------------------------------------------
 def write_output(path, markdown, meta):
-    out = Path(path).parent / "docs"
-    out.mkdir(exist_ok=True)
+    out_dir = Path(path).parent / "docs"
+    out_dir.mkdir(exist_ok=True)
 
     flow = meta["flowname"]
-    today = datetime.now().strftime("%Y-%m-%d")
     version = determine_version(flow)
+    today = datetime.now().strftime("%Y-%m-%d")
     author = "Sindhu K V"
 
-    temp_md = out / f"{flow}.md"
-    temp_docx = out / f"{flow}_temp.docx"
-    final_docx = out / f"{flow}_Documentation_v{version}.docx"
+    temp_md = out_dir / f"{flow}.md"
+    temp_docx = out_dir / f"{flow}_temp.docx"
+    final_docx = out_dir / f"{flow}_Documentation_v{version}.docx"
 
-    # Save md for debugging
     temp_md.write_text(markdown, encoding="utf-8")
 
-    # Convert md → temp docx
     subprocess.run(["pandoc", str(temp_md), "-o", str(temp_docx)], check=False)
 
-    # Prepare placeholders
     fields = {
         "flow_name": flow,
         "author": author,
         "date": today,
         "version": version,
-        "purpose": extract_section(markdown, "1.1 Purpose"),
-        "scope": extract_section(markdown, "1.2 Scope"),
-        "architecture": extract_section(markdown, "2.1 Integration Architecture"),
+        "purpose": extract_section(markdown, "1.1"),
+        "scope": extract_section(markdown, "1.2"),
+        "architecture": extract_section(markdown, "2.1"),
         "sender_systems": ", ".join(meta["senders"]),
         "receiver_systems": ", ".join(meta["receivers"]),
         "sender_adapters": ", ".join(meta["adapters"]),
-        "receiver_adapters": "<Not parsed>",
+        "receiver_adapters": "",
         "scripts_used": ", ".join(meta["scripts"]),
         "mappings": ", ".join(meta["mappings"]),
-        "scenario_description": extract_section(markdown, "3.1 Scenario Description"),
-        "data_flows": extract_section(markdown, "3.2 Data Flows"),
-        "security_requirements": extract_section(markdown, "3.3 Security Requirements"),
-        "error_handling": extract_section(markdown, "4. Error Handling"),
-        "testing_validation": extract_section(markdown, "5. Testing Validation"),
-        "reference_documents": extract_section(markdown, "6. Reference Documents"),
+        "scenario_description": extract_section(markdown, "3.1"),
+        "data_flows": extract_section(markdown, "3.2"),
+        "security_requirements": extract_section(markdown, "3.3"),
+        "error_handling": extract_section(markdown, "4."),
+        "testing_validation": extract_section(markdown, "5."),
+        "reference_documents": extract_section(markdown, "6."),
         "diagram": extract_mermaid(markdown)
     }
 
-    # Build final docx from template
-    render_docx_from_template(
-        "tools/reference.docx",
-        final_docx,
-        fields
-    )
+    render_docx_from_template(TEMPLATE_PATH, final_docx, fields)
+    inject_logos(final_docx, SAP_LOGO_PATH, MM_LOGO_PATH)
 
-    # Insert logos
-    inject_logos(
-        final_docx,
-        "tools/logos/sap.png",
-        "tools/logos/motiveminds.png"
-    )
-
-    print(f"✔ FINAL DOCX GENERATED: {final_docx}")
+    print(f"✔ Final DOCX created: {final_docx}")
 
 
 # ---------------------------------------------------------
@@ -318,12 +292,10 @@ def write_output(path, markdown, meta):
 if __name__ == "__main__":
     for f in sys.argv[1:]:
         print(f"Processing {f}")
-
         meta = parse_iflw(f)
         diagram = high_level_diagram(meta)
         prompt = build_prompt(meta, diagram)
         markdown = call_llm(prompt)
-
         write_output(f, markdown, meta)
 
     print("Done.")
