@@ -92,4 +92,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Generated CPI Documentation for ${{ github.eve
+          git commit -m "Generated CPI Documentation for ${{ github.event.inputs.package_id }}"
+          git push || true
