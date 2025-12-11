@@ -35,38 +35,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify Reference Template
+      - name: Verify reference template
         run: |
           if [ ! -f tools/reference.docx ]; then
-            echo "❌ tools/reference.docx not found!"
+            echo "❌ tools/reference.docx missing!"
             exit 1
           fi
           echo "✔ reference.docx found"
 
-      - name: Install System Dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y pandoc jq python3-pip
           pip3 install python-docx requests
 
-      - name: Enable Docker (Fix for Ubuntu 24.04 containerd conflict)
-        uses: docker/setup-docker@v4
-
-      - name: Start Ollama Container & Pull Model
+      - name: Verify Docker (already installed on GitHub runner)
         run: |
+          echo "Checking Docker status..."
+          docker --version
+          docker info
+
+      - name: Start Ollama container + pull model
+        run: |
+          docker pull ollama/ollama:latest
           docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
           echo "Waiting for Ollama to start..."
           sleep 12
           docker exec ollama ollama pull deepseek-r1:1.5b
           docker exec ollama ollama run deepseek-r1:1.5b "warmup"
 
-      - name: Ensure Tools Are Executable
+      - name: Make tools executable
         run: chmod +x tools/*.sh tools/*.py || true
 
-      - name: Ensure Logos Exist
+      - name: Ensure logos exist
         run: |
           mkdir -p tools/logos
-          echo "Logos directory ready:"
+          echo "Logos directory:"
           ls -la tools/logos || true
 
       - name: Generate Documentation
@@ -76,7 +80,7 @@ jobs:
         run: |
           tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
-      - name: Commit Documentation
+      - name: Commit documentation
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
@@ -84,9 +88,8 @@ jobs:
           git add cpi-artifacts/${{ github.event.inputs.package_id }}/docs || true
 
           if git diff --cached --quiet; then
-            echo "✔ No new files to commit"
+            echo "✔ No changes to commit"
             exit 0
           fi
 
-          git commit -m "Generated CPI Documentation for ${{ github.event.inputs.package_id }}"
-          git push || true
+          git commit -m "Generated CPI Documentation for ${{ github.eve
