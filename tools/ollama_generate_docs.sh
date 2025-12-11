@@ -1,24 +1,18 @@
-#!/bin/bash
+
+---
+
+# ✅ FILE 2 — `tools/run_generate_docs.sh`  
+(Minimal executor for GitHub Actions)
+
+```bash
+#!/usr/bin/env bash
 set -e
 
-PACKAGE="$1"
-PKG_DIR="cpi-artifacts/$PACKAGE"
+echo "Installing Python dependencies..."
+python -m pip install --upgrade pip
+python -m pip install requests python-docx
 
-echo "📦 Processing package: $PACKAGE"
+echo "Running documentation generator..."
+python tools/generate_iflow_docs.py
 
-IFLOWS=$(find "$PKG_DIR" -type f -name "*.iflw")
-
-if [ -z "$IFLOWS" ]; then
-  echo "❌ No iFlows found in: $PKG_DIR"
-  exit 1
-fi
-
-echo "🔍 Found iFlows:"
-echo "$IFLOWS"
-
-for IFLOW in $IFLOWS; do
-  echo "➡ Generating documentation for: $IFLOW"
-  python3 tools/ollama_generate_docs.py "$IFLOW"
-done
-
-echo "✔ Documentation generation completed."
+echo "Documentation complete."
