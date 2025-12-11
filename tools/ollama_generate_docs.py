@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Generate Markdown (.md) and Word (.docx) documentation per iFlow folder.
-Uses Ollama (DeepSeek-R1-0528) inside GitHub Actions.
+Uses DeepSeek R1 through Ollama (deepseek-r1 model).
 """
 
 import os
@@ -14,19 +14,57 @@ from datetime import datetime
 from docx import Document
 from docx.shared import Inches, Pt
 
-# CONFIG
-MODEL_NAME = "DeepSeek-R1-0528"
+# ============================================================
+# CONFIG — Updated for deepseek-r1
+# ============================================================
+
+MODEL_NAME = "deepseek-r1"
 OLLAMA_URL = "http://localhost:11434/api/generate"
+
 SAP_LOGO_PATH = "tools/logos/sap.png"
 MOTIVEMINDS_LOGO_PATH = "tools/logos/motiveminds.png"
+
 OUTPUT_DIR = "docs_generated"
 
-# SYSTEM PROMPT EXACTLY AS PROVIDED
-SYSTEM_PROMPT = r"""You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files... (TRUNCATED FOR LENGTH IN THIS MESSAGE)
+# ============================================================
+# SYSTEM PROMPT EXACT (FULL, NOT TRUNCATED)
+# ============================================================
+
+SYSTEM_PROMPT = r"""
+You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure, using Markdown headings (# for main sections, ## for subsections). Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
+
+**MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
+The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML like:
+<h1 style="color: #1f4e79; font-size: 2.5em;">Table of Contents</h1>
+
+Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax. Insert 10 blank lines after the TOC, then the unique marker:
+---TOC-END-PAGE-BREAK---
+
+# 1. Introduction
+## 1.1 Purpose
+## 1.2 Scope
+
+# 2. Integration Overview
+## 2.1 Integration Architecture
+Output the High-Level Process Flow Diagram immediately after the architecture text using only Mermaid inside ```mermaid . Must be graph TD. One blank line must appear after closing ```.
+
+## 2.2 Integration Components
+
+# 3. Integration Scenarios
+## 3.1 Scenario Description
+## 3.2 Data Flows
+## 3.3 Security Requirements
+
+# 4. Error Handling and Logging
+
+# 5. Testing Validation
+
+# 6. Reference Documents
 """
 
-# (NOTE: When I send final file, I include FULL system prompt. Here trimmed for readability.)
-# I WILL INSERT THE FULL PROMPT IN THE FINAL DELIVERY.
+# ============================================================
+# iFlow Search
+# ============================================================
 
 def find_iflows(base_dir: Path):
     roots = set()
@@ -35,6 +73,10 @@ def find_iflows(base_dir: Path):
             if f == "iFlowContent.xml" or f.endswith(".iflw"):
                 roots.add(Path(root))
     return sorted(list(roots))
+
+# ============================================================
+# Collect artifacts text
+# ============================================================
 
 def collect_artifacts_text(iflow_dir: Path):
     parts = []
@@ -49,6 +91,10 @@ def collect_artifacts_text(iflow_dir: Path):
                 parts.append(f"\n--- START ARTIFACT: {p} ---\n{txt}\n--- END ARTIFACT: {p} ---")
     return "\n".join(parts)
 
+# ============================================================
+# Call DeepSeek R1 model via Ollama
+# ============================================================
+
 def call_ollama(system_prompt, user_prompt):
     payload = {
         "model": MODEL_NAME,
@@ -58,12 +104,20 @@ def call_ollama(system_prompt, user_prompt):
         ],
         "temperature": 0.1
     }
-    resp = requests.post(OLLAMA_URL, json=payload, timeout=300)
-    resp.raise_for_status()
-    data = resp.json()
+
+    response = requests.post(OLLAMA_URL, json=payload, timeout=500)
+    response.raise_for_status()
+
+    data = response.json()
+
     if "choices" in data:
         return data["choices"][0]["message"]["content"]
+
     return data.get("content", "")
+
+# ============================================================
+# Build Cover Page HTML
+# ============================================================
 
 def build_cover_page(iFlowName: str):
     author = subprocess.run(
@@ -79,11 +133,11 @@ def build_cover_page(iFlowName: str):
     date_str = datetime.utcnow().strftime("%Y-%m-%d")
 
     cover = f"""
-<div style="float: left; text-align: left;">
+<div style="float: left;">
 <img src="{SAP_LOGO_PATH}" width="150"/>
 </div>
 
-<div style="float: right; text-align: right;">
+<div style="float: right;">
 <img src="{MOTIVEMINDS_LOGO_PATH}" width="150"/>
 </div>
 
@@ -107,27 +161,31 @@ def build_cover_page(iFlowName: str):
 """
     return cover
 
+# ============================================================
+# Write DOCX
+# ============================================================
+
 def write_docx(out_doc: Path, md_text: str, iflow_name: str):
     doc = Document()
 
-    table = doc.add_table(rows=1, cols=2)
-    left, right = table.rows[0].cells
+    tbl = doc.add_table(rows=1, cols=2)
+    left, right = tbl.rows[0].cells
 
     try:
         left.paragraphs[0].add_run().add_picture(SAP_LOGO_PATH, width=Inches(1.5))
+    except:
+        pass
+    try:
         right.paragraphs[0].add_run().add_picture(MOTIVEMINDS_LOGO_PATH, width=Inches(1.5))
     except:
         pass
 
-    doc.add_paragraph()
+    title = doc.add_paragraph()
+    title.alignment = 1
+    run = title.add_run(iflow_name)
+    run.bold = True
+    run.font.size = Pt(28)
 
-    t = doc.add_paragraph()
-    t.alignment = 1
-    r = t.add_run(iflow_name)
-    r.bold = True
-    r.font.size = Pt(26)
-
-    doc.add_paragraph()
     doc.add_page_break()
 
     for line in md_text.split("\n"):
@@ -135,23 +193,28 @@ def write_docx(out_doc: Path, md_text: str, iflow_name: str):
 
     doc.save(out_doc)
 
-def main():
-    base_dir = Path(".")
-    output_root = Path(OUTPUT_DIR)
-    output_root.mkdir(exist_ok=True)
+# ============================================================
+# MAIN
+# ============================================================
 
-    iflows = find_iflows(base_dir)
+def main():
+    base = Path(".")
+    out_root = Path(OUTPUT_DIR)
+    out_root.mkdir(exist_ok=True)
+
+    iflows = find_iflows(base)
     if not iflows:
         print("No iFlows found")
-        sys.exit(0)
+        return
 
-    for iflow_dir in iflows:
-        iFlowName = iflow_dir.name
-        print(f"\n=== Processing iFlow: {iFlowName} ===")
+    for iflow in iflows:
+        name = iflow.name
+        print(f"\n=== Processing iFlow: {name} ===")
 
-        artifacts = collect_artifacts_text(iflow_dir)
+        artifacts = collect_artifacts_text(iflow)
+
         user_prompt = f"""
-Synthesize the documentation for iFlow '{iFlowName}':
+Synthesize the documentation for iFlow '{name}':
 
 ```text
 {artifacts}
