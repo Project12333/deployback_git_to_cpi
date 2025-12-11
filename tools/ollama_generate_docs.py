@@ -14,15 +14,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
 # =========================================================
-# IMPORTANT: Resolve absolute paths
+# PATH RESOLUTION (IMPORTANT FOR GITHUB ACTIONS)
 # =========================================================
-BASE_DIR = Path(__file__).resolve().parent          # tools/
-ROOT_DIR = BASE_DIR.parent                          # repo root
-
+BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_PATH = BASE_DIR / "reference.docx"
 SAP_LOGO_PATH = BASE_DIR / "logos" / "sap.png"
 MM_LOGO_PATH = BASE_DIR / "logos" / "motiveminds.png"
-
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "deepseek-r1:1.5b"
@@ -49,10 +46,10 @@ def parse_iflw(path):
         for elem in root.iter():
             tag = elem.tag.split("}")[-1].lower()
             name = (
-                elem.attrib.get("name") or
-                elem.attrib.get("id") or
-                elem.attrib.get("idref") or
-                tag
+                elem.attrib.get("name")
+                or elem.attrib.get("id")
+                or elem.attrib.get("idref")
+                or tag
             )
 
             if "sender" in tag or "start" in tag:
@@ -64,7 +61,7 @@ def parse_iflw(path):
             if "adapter" in tag:
                 meta["adapters"].append(name)
 
-            if "script" in tag or "scripttask" in tag or "groovy" in tag:
+            if "script" in tag or "groovy" in tag or "scripttask" in tag:
                 meta["scripts"].append(name)
 
             if "mapping" in tag:
@@ -79,7 +76,7 @@ def parse_iflw(path):
 
 
 # ---------------------------------------------------------
-# Mermaid Diagram
+# Mermaid diagram
 # ---------------------------------------------------------
 def sanitize_id(s):
     return "".join(c if c.isalnum() else "_" for c in str(s))
@@ -99,7 +96,7 @@ def high_level_diagram(meta):
 
 
 # ---------------------------------------------------------
-# Version
+# Version Resolver
 # ---------------------------------------------------------
 def determine_version(flow_name):
     mode = os.getenv("VERSION_MODE", "none")
@@ -122,28 +119,31 @@ def determine_version(flow_name):
 
 
 # ---------------------------------------------------------
-# Build prompt for DeepSeek
+# Build LLM Prompt
 # ---------------------------------------------------------
 def build_prompt(meta, diagram):
     return (
-        "Produce a structured technical specification with EXACT sections:\n"
+        "Generate a structured SAP CPI Technical Specification document.\n"
+        "Sections required:\n"
         "1.1 Purpose\n1.2 Scope\n"
         "2.1 Integration Architecture\n2.2 Integration Components\n"
         "3.1 Scenario Description\n3.2 Data Flows\n3.3 Security Requirements\n"
-        "4. Error Handling and Logging\n5. Testing Validation\n6. Reference Documents\n\n"
-        "Appendix Diagram:\n" + diagram +
+        "4 Error Handling and Logging\n"
+        "5 Testing Validation\n"
+        "6 Reference Documents\n"
+        "\nDiagram:\n" + diagram +
         "\nMetadata:\n" + json.dumps(meta, indent=2)
     )
 
 
 # ---------------------------------------------------------
-# Call DeepSeek using Ollama
+# Call DeepSeek (Ollama)
 # ---------------------------------------------------------
 def call_llm(prompt):
     res = requests.post(
         OLLAMA_URL,
         json={"model": MODEL_NAME, "prompt": prompt, "stream": False},
-        timeout=120
+        timeout=180
     )
     res.raise_for_status()
     j = res.json()
@@ -151,7 +151,7 @@ def call_llm(prompt):
 
 
 # ---------------------------------------------------------
-# Extract sections
+# Extract Section Helpers
 # ---------------------------------------------------------
 def extract_section(md, heading):
     lines = md.splitlines()
@@ -180,54 +180,57 @@ def extract_mermaid(md):
 
 
 # ---------------------------------------------------------
-# Replace placeholders inside DOCX
+# Render DOCX from Template
 # ---------------------------------------------------------
 def render_docx_from_template(template_path, output_path, fields):
     doc = Document(template_path)
 
-    def replace_para(p):
-        for key, val in fields.items():
-            tag = "{{" + key + "}}"
-            if tag in p.text:
-                for r in p.runs:
-                    r.text = r.text.replace(tag, val)
+    def replace_paragraph(paragraph):
+        for k, v in fields.items():
+            tag = "{{" + k + "}}"
+            if tag in paragraph.text:
+                for run in paragraph.runs:
+                    run.text = run.text.replace(tag, v)
 
+    # Replace in paragraphs
     for p in doc.paragraphs:
-        replace_para(p)
+        replace_paragraph(p)
 
+    # Replace in tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
-                    replace_para(p)
+                    replace_paragraph(p)
 
     doc.save(output_path)
 
 
 # ---------------------------------------------------------
-# Insert Logos in Header
+# Insert Logos in Header (FIXED)
 # ---------------------------------------------------------
 def inject_logos(docx_path, sap_logo, mm_logo):
     doc = Document(docx_path)
     header = doc.sections[0].header
 
-    # Clear
+    # Clear header
     for p in header.paragraphs:
         p.clear()
 
-    table = header.add_table(rows=1, cols=2)
-    table.autofit = False
+    # *** FIX: width required ***
+    table = header.add_table(rows=1, cols=2, width=Inches(6))
+
     table.columns[0].width = Inches(3)
     table.columns[1].width = Inches(3)
 
-    # Left logo
+    # Left Logo
     left = table.rows[0].cells[0].paragraphs[0]
     run_left = left.add_run()
     if os.path.exists(sap_logo):
         run_left.add_picture(str(sap_logo), width=Inches(1.3))
     left.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    # Right logo
+    # Right Logo
     right = table.rows[0].cells[1].paragraphs[0]
     run_right = right.add_run()
     if os.path.exists(mm_logo):
@@ -238,7 +241,7 @@ def inject_logos(docx_path, sap_logo, mm_logo):
 
 
 # ---------------------------------------------------------
-# Write Final Document
+# Final Output Writer
 # ---------------------------------------------------------
 def write_output(path, markdown, meta):
     out_dir = Path(path).parent / "docs"
@@ -249,13 +252,7 @@ def write_output(path, markdown, meta):
     today = datetime.now().strftime("%Y-%m-%d")
     author = "Sindhu K V"
 
-    temp_md = out_dir / f"{flow}.md"
-    temp_docx = out_dir / f"{flow}_temp.docx"
     final_docx = out_dir / f"{flow}_Documentation_v{version}.docx"
-
-    temp_md.write_text(markdown, encoding="utf-8")
-
-    subprocess.run(["pandoc", str(temp_md), "-o", str(temp_docx)], check=False)
 
     fields = {
         "flow_name": flow,
@@ -280,10 +277,13 @@ def write_output(path, markdown, meta):
         "diagram": extract_mermaid(markdown)
     }
 
+    # Render final doc
     render_docx_from_template(TEMPLATE_PATH, final_docx, fields)
+
+    # Insert logos
     inject_logos(final_docx, SAP_LOGO_PATH, MM_LOGO_PATH)
 
-    print(f"✔ Final DOCX created: {final_docx}")
+    print(f"✔ Final document generated: {final_docx}")
 
 
 # ---------------------------------------------------------
