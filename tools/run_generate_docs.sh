@@ -1,10 +1,3 @@
-
----
-
-# ✅ FILE 2 — `tools/run_generate_docs.sh`  
-(Works with `deepseek-r1`)
-
-```bash
 #!/usr/bin/env bash
 set -e
 
