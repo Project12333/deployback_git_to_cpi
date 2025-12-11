@@ -1,4 +1,4 @@
-name: Generate CPI iFlow Documentation (FAST)
+name: Generate CPI iFlow Documentation (DeepSeek)
 
 on:
   workflow_dispatch:
@@ -6,23 +6,6 @@ on:
       package_id:
         type: string
         required: true
-        description: "Enter the package folder name inside cpi-artifacts"
-
-      version_mode:
-        type: choice
-        required: false
-        default: "none"
-        description: "Versioning mode"
-        options:
-          - none
-          - manual
-          - date
-          - git-sha
-
-      version_value:
-        type: string
-        required: false
-        description: "If manual mode, specify version (e.g. 1.4)"
 
 permissions:
   contents: write
@@ -35,14 +18,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify reference template
-        run: |
-          if [ ! -f tools/reference.docx ]; then
-            echo "❌ tools/reference.docx missing!"
-            exit 1
-          fi
-          echo "✔ reference.docx found"
-
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
@@ -51,36 +26,29 @@ jobs:
 
       - name: Verify Docker (already installed on GitHub runner)
         run: |
-          echo "Checking Docker status..."
           docker --version
           docker info
 
-      - name: Start Ollama container + pull model
+      - name: Start Ollama container + load DeepSeek
         run: |
           docker pull ollama/ollama:latest
           docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
           echo "Waiting for Ollama to start..."
-          sleep 12
+          sleep 10
           docker exec ollama ollama pull deepseek-r1:1.5b
           docker exec ollama ollama run deepseek-r1:1.5b "warmup"
 
-      - name: Make tools executable
-        run: chmod +x tools/*.sh tools/*.py || true
-
-      - name: Ensure logos exist
+      - name: Prepare logos
         run: |
           mkdir -p tools/logos
-          echo "Logos directory:"
           ls -la tools/logos || true
 
-      - name: Generate Documentation
-        env:
-          VERSION_MODE: ${{ github.event.inputs.version_mode }}
-          VERSION_VALUE: ${{ github.event.inputs.version_value }}
+      - name: Generate documentation
         run: |
+          chmod +x tools/*.sh tools/*.py
           tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
 
-      - name: Commit documentation
+      - name: Commit generated docs
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
@@ -88,9 +56,9 @@ jobs:
           git add cpi-artifacts/${{ github.event.inputs.package_id }}/docs || true
 
           if git diff --cached --quiet; then
-            echo "✔ No changes to commit"
+            echo "No changes"
             exit 0
           fi
 
-          git commit -m "Generated CPI Documentation for ${{ github.event.inputs.package_id }}"
+          git commit -m "Generated docs for package ${{ github.event.inputs.package_id }}"
           git push || true
