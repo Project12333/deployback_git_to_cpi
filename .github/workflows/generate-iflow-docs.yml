@@ -1,64 +1,49 @@
-name: Generate CPI iFlow Documentation (DeepSeek)
+name: Generate CPI iFlow Documentation
 
 on:
   workflow_dispatch:
-    inputs:
-      package_id:
-        type: string
-        required: true
-
-permissions:
-  contents: write
+  push:
+    branches:
+      - main
 
 jobs:
-  docs:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install system dependencies
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Ollama
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y pandoc jq python3-pip
-          pip3 install python-docx requests
+          curl -fsSL https://ollama.com/install.sh | sh
+          sudo systemctl start ollama
 
-      - name: Verify Docker (already installed on GitHub runner)
+      - name: Pull DeepSeek Model
         run: |
-          docker --version
-          docker info
+          ollama pull DeepSeek-R1-0528
 
-      - name: Start Ollama container + load DeepSeek
+      - name: Run Documentation Generator
         run: |
-          docker pull ollama/ollama:latest
-          docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
-          echo "Waiting for Ollama to start..."
-          sleep 10
-          docker exec ollama ollama pull deepseek-r1:1.5b
-          docker exec ollama ollama run deepseek-r1:1.5b "warmup"
+          chmod +x tools/run_generate_docs.sh
+          ./tools/run_generate_docs.sh
 
-      - name: Prepare logos
+      - name: Commit Generated Docs
         run: |
-          mkdir -p tools/logos
-          ls -la tools/logos || true
+          git config --local user.name "GitHub Actions"
+          git config --local user.email "actions@github.com"
+          git add docs_generated || true
 
-      - name: Generate documentation
-        run: |
-          chmod +x tools/*.sh tools/*.py
-          tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
-
-      - name: Commit generated docs
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-
-          git add cpi-artifacts/${{ github.event.inputs.package_id }}/docs || true
-
-          if git diff --cached --quiet; then
-            echo "No changes"
-            exit 0
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-generated CPI iFlow documentation"
+            git push
           fi
-
-          git commit -m "Generated docs for package ${{ github.event.inputs.package_id }}"
-          git push || true
