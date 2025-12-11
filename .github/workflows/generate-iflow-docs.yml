@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
@@ -26,23 +26,24 @@ jobs:
           curl -fsSL https://ollama.com/install.sh | sh
           sudo systemctl start ollama
 
-      - name: Pull DeepSeek Model
+      - name: Pull DeepSeek R1 Model
         run: |
-          ollama pull DeepSeek-R1-0528
+          ollama pull deepseek-r1
 
-      - name: Run Documentation Generator
+      - name: Generate Documentation
         run: |
           chmod +x tools/run_generate_docs.sh
           ./tools/run_generate_docs.sh
 
-      - name: Commit Generated Docs
+      - name: Commit Documentation
         run: |
           git config --local user.name "GitHub Actions"
           git config --local user.email "actions@github.com"
+
           git add docs_generated || true
 
           if git diff --staged --quiet; then
-            echo "No changes to commit"
+            echo "No new docs to commit"
           else
             git commit -m "Auto-generated CPI iFlow documentation"
             git push
