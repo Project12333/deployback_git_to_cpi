@@ -1,1 +1,1 @@
-Error generating documentation.
+Documentation could not be generated due to API error.
