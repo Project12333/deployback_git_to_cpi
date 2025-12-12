@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 PACKAGE="$1"
 
-if [ -z "$PACKAGE" ]; then
+if [ -z "${PACKAGE:-}" ]; then
   echo "ERROR: Package name not provided."
   echo "Usage: ./tools/run_generate_docs.sh <PACKAGE_NAME>"
   exit 1
