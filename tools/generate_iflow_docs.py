@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+Generate per-iFlow DOCX/MD using DeepSeek Cloud API (chat endpoint).
+Reads DEEPSEEK_API_KEY from env and optional DEEPSEEK_API_URL.
+"""
 
 import os
 import re
@@ -7,21 +11,21 @@ import argparse
 import requests
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 
-
-# ============================================================
-#  CONFIGURATION
-# ============================================================
-
+# ------------------------
+# CONFIG
+# ------------------------
 HARDCODE_AUTHOR = "Sindhu"
 HARDCODE_DATE = datetime.utcnow().strftime("%Y-%m-%d")
 HARDCODE_VERSION = "Draft"
 
 MODEL_NAME = "deepseek-r1"
-OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
+# default cloud endpoint (can be overridden by env DEEPSEEK_API_URL)
+DEFAULT_DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 SAP_LOGO = "tools/logos/sap.png"
 MM_LOGO = "tools/logos/motiveminds.png"
@@ -29,14 +33,11 @@ MM_LOGO = "tools/logos/motiveminds.png"
 PROMPT_FILE = Path("tools/prompts/system_prompt.txt")
 
 
-# ============================================================
-#  LOAD SYSTEM PROMPT
-# ============================================================
-
+# ------------------------
+# Load system prompt
+# ------------------------
 if PROMPT_FILE.exists():
-    SYSTEM_PROMPT = PROMPT_FILE.read_text(
-        encoding="utf-8", errors="ignore"
-    )
+    SYSTEM_PROMPT = PROMPT_FILE.read_text(encoding="utf-8", errors="ignore")
 else:
     SYSTEM_PROMPT = (
         "You are an SAP CPI Documentation Generator.\n"
@@ -56,15 +57,14 @@ else:
         "6. Reference Documents\n\n"
         "RULES:\n"
         "- Use provided artifacts.\n"
-        "- Infer missing details but specify assumptions.\n"
-        "- ALWAYS generate all sections.\n"
+        "- Infer missing details but explicitly state assumptions.\n"
+        "- Always generate all 6 sections with the exact headings."
     )
 
 
-# ============================================================
-#  HELPER FUNCTIONS
-# ============================================================
-
+# ------------------------
+# Helpers
+# ------------------------
 def sanitize_filename(name: str) -> str:
     name = re.sub(r"\s+", "_", name)
     name = re.sub(r'[<>:"/\\|?*]+', "", name)
@@ -72,164 +72,158 @@ def sanitize_filename(name: str) -> str:
 
 
 def find_iflows(package_path: Path):
-    results = set()
+    roots = set()
     for root, _, files in os.walk(package_path):
         for f in files:
             if f.endswith(".iflw") or f == "iFlowContent.xml":
-                results.add(Path(root))
+                roots.add(Path(root))
                 break
-    return sorted(results)
+    return sorted(roots)
 
 
 def collect_artifacts(iflow_dir: Path) -> str:
     parts = []
     for root, _, files in os.walk(iflow_dir):
         for fname in files:
-            if fname.endswith((".iflw", ".groovy", ".xslt")) \
-               or fname == "iFlowContent.xml":
-
+            if fname.endswith((".iflw", ".groovy", ".xslt")) or fname == "iFlowContent.xml":
                 p = Path(root) / fname
                 try:
-                    txt = p.read_text(
-                        encoding="utf-8",
-                        errors="replace"
-                    )
-                except:
+                    txt = p.read_text(encoding="utf-8", errors="replace")
+                except Exception:
                     txt = "[UNREADABLE FILE]"
-
-                parts.append(
-                    f"\n--- START ARTIFACT: {p} ---\n"
-                    f"{txt}\n"
-                    f"--- END ARTIFACT: {p} ---\n"
-                )
+                parts.append(f"\n--- START ARTIFACT: {p} ---\n{txt}\n--- END ARTIFACT: {p} ---\n")
     return "\n".join(parts)
 
 
-def find_iflw(iflow_dir: Path):
+def find_iflw(iflow_dir: Path) -> Optional[Path]:
     for f in iflow_dir.glob("*.iflw"):
         return f
     xml = iflow_dir / "iFlowContent.xml"
     return xml if xml.exists() else None
 
 
-def extract_display_name(iflw_file: Path) -> str:
+def extract_display_name(iflw_file: Optional[Path]) -> str:
+    if iflw_file is None:
+        return "unknown_iflow"
     try:
-        text = iflw_file.read_text(
-            encoding="utf-8",
-            errors="replace"
-        )
-    except:
+        txt = iflw_file.read_text(encoding="utf-8", errors="replace")
+    except Exception:
         return sanitize_filename(iflw_file.stem)
-
-    # Try name=""
-    m = re.search(
-        r'IntegrationFlow[^>]*name="(.*?)"',
-        text,
-        re.IGNORECASE
-    )
+    m = re.search(r'IntegrationFlow[^>]*name="(.*?)"', txt, re.IGNORECASE)
     if m:
         return sanitize_filename(m.group(1))
-
-    # Try id=""
-    m = re.search(
-        r'IntegrationFlow[^>]*id="(.*?)"',
-        text,
-        re.IGNORECASE
-    )
+    m = re.search(r'IntegrationFlow[^>]*id="(.*?)"', txt, re.IGNORECASE)
     if m:
         return sanitize_filename(m.group(1))
-
     return sanitize_filename(iflw_file.stem)
 
 
-# ============================================================
-#  AI CALL (DeepSeek via Ollama /api/chat)
-# ============================================================
+# ------------------------
+# DeepSeek Cloud call
+# ------------------------
+def call_deepseek(system_prompt: str, user_prompt: str) -> str:
+    key = os.environ.get("DEEPSEEK_API_KEY")
+    if not key:
+        raise RuntimeError("DEEPSEEK_API_KEY is not set in the environment.")
 
-def call_ollama(system_prompt: str, user_prompt: str) -> str:
+    url = os.environ.get("DEEPSEEK_API_URL", DEFAULT_DEEPSEEK_API_URL)
+
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "User-Agent": "cpi-docs-generator/1.0"
+    }
+
     payload = {
         "model": MODEL_NAME,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        "stream": False
+        "temperature": 0.1
     }
 
-    resp = requests.post(
-        OLLAMA_CHAT_URL,
-        json=payload,
-        timeout=600
-    )
+    resp = requests.post(url, json=payload, headers=headers, timeout=600)
     resp.raise_for_status()
     data = resp.json()
 
-    if (
-        isinstance(data, dict)
-        and "message" in data
-        and "content" in data["message"]
-    ):
-        return data["message"]["content"]
+    # Try to pull typical fields
+    if isinstance(data, dict):
+        # common: choices -> [ { message: { content: "..." } } ]
+        if "choices" in data and data["choices"]:
+            try:
+                msg = data["choices"][0].get("message")
+                if isinstance(msg, dict) and "content" in msg:
+                    return msg["content"]
+            except Exception:
+                pass
+        # some providers return { message: { content: "..." } }
+        if "message" in data and isinstance(data["message"], dict) and "content" in data["message"]:
+            return data["message"]["content"]
+        # fallback to top-level 'content' or 'response'
+        if "content" in data and isinstance(data["content"], str):
+            return data["content"]
+        if "response" in data and isinstance(data["response"], str):
+            return data["response"]
 
+    # final fallback: convert to string
     return str(data)
 
 
-# ============================================================
-#  DOCX GENERATION
-# ============================================================
-
+# ------------------------
+# DOCX writer (cover, toc, ai content)
+# ------------------------
 def write_docx(path: Path, content: str, title_text: str):
     doc = Document()
 
-    # ------------------ COVER PAGE LOGOS ------------------
-    table = doc.add_table(1, 2)
-    left, right = table.rows[0].cells
+    # logos table (left/right)
+    tbl = doc.add_table(1, 2)
+    left, right = tbl.rows[0].cells
 
     p_left = left.paragraphs[0]
     p_left.alignment = 0
     try:
         p_left.add_run().add_picture(SAP_LOGO, width=Inches(1.5))
-    except:
+    except Exception:
         pass
 
     p_right = right.paragraphs[0]
     p_right.alignment = 2
     try:
         p_right.add_run().add_picture(MM_LOGO, width=Inches(1.5))
-    except:
+    except Exception:
         pass
 
     doc.add_paragraph("\n\n")
 
-    # ------------------ TITLE ------------------
+    # Title
     p = doc.add_paragraph()
     p.alignment = 1
     r = p.add_run(title_text)
     r.bold = True
     r.font.size = Pt(28)
-    r.font.color.rgb = RGBColor(31, 78, 121)
+    try:
+        r.font.color.rgb = RGBColor(31, 78, 121)
+    except Exception:
+        pass
 
     doc.add_paragraph("\n")
 
-    # ------------------ DETAILS TABLE ------------------
+    # Author/Date/Version
     info = doc.add_table(3, 2)
     info.style = "Table Grid"
-
     info.cell(0, 0).text = "Author:"
     info.cell(1, 0).text = "Date:"
     info.cell(2, 0).text = "Version:"
-
     info.cell(0, 1).text = HARDCODE_AUTHOR
     info.cell(1, 1).text = HARDCODE_DATE
     info.cell(2, 1).text = HARDCODE_VERSION
 
     doc.add_page_break()
 
-    # ------------------ TABLE OF CONTENTS ------------------
-    toc_title = doc.add_paragraph()
-    toc_title.add_run("Table of Contents").bold = True
-
+    # TOC (static)
     toc_lines = [
+        "Table of Contents",
         "1. Introduction",
         "   1.1 Purpose",
         "   1.2 Scope",
@@ -247,72 +241,75 @@ def write_docx(path: Path, content: str, title_text: str):
         "5. Testing Validation",
         "6. Reference Documents"
     ]
-
     for line in toc_lines:
         doc.add_paragraph(line)
 
     doc.add_page_break()
 
-    # ------------------ AI CONTENT ------------------
+    # AI content
     for line in content.split("\n"):
         doc.add_paragraph(line)
 
     doc.save(path)
 
 
-# ============================================================
-#  MAIN
-# ============================================================
-
+# ------------------------
+# MAIN
+# ------------------------
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--package", required=True)
+    parser.add_argument("--package", required=True, help="Folder name inside cpi-artifacts/")
     args = parser.parse_args()
 
-    package = Path("cpi-artifacts") / args.package
-
-    if not package.exists():
-        print("❌ Invalid package")
+    package_path = Path("cpi-artifacts") / args.package
+    if not package_path.exists():
+        print("❌ Package not found:", package_path)
         sys.exit(1)
 
-    print("📦 Package:", args.package)
+    print("📦 Generating docs for package:", args.package)
+    iflow_dirs = find_iflows(package_path)
+    print("➡ Found", len(iflow_dirs), "iFlow(s)")
 
-    iflow_dirs = find_iflows(package)
-    print("➡ Found", len(iflow_dirs), "iFlows")
+    for iflow_dir in iflow_dirs:
+        print("\n--- Processing:", iflow_dir)
+        iflw = find_iflw(iflow_dir)
+        display_name = extract_display_name(iflw)
+        print("📌 iFlow display name:", display_name)
 
-    for iflow in iflow_dirs:
-        print("\n--- Processing directory:", iflow)
-
-        iflw_file = find_iflw(iflow)
-        display_name = extract_display_name(iflw_file)
-
-        print("📌 iFlow Display Name:", display_name)
-
-        artifacts = collect_artifacts(iflow)
+        artifacts = collect_artifacts(iflow_dir)
+        if not artifacts.strip():
+            print("⚠️ No artifacts found for", display_name)
 
         user_prompt = (
-            f"Generate full SAP CPI documentation for iFlow '{display_name}'. "
-            "Use the required 6-section structure. Write clearly and completely. "
-            "Below are the iFlow artifacts:\n\n"
-            f"{artifacts}"
+            f"Generate SAP CPI documentation for iFlow '{display_name}'. "
+            "Produce sections 1-6 exactly as listed. Use the artifacts below "
+            "to populate Purpose, Scope, Architecture, Components, Scenarios, "
+            "Data Flows, Security, Error Handling, Testing, and References.\n\n"
+            "ARTIFACTS:\n" + artifacts
         )
 
-        ai_text = call_ollama(SYSTEM_PROMPT, user_prompt)
+        try:
+            ai_out = call_deepseek(SYSTEM_PROMPT, user_prompt)
+        except Exception as e:
+            print("❌ Error calling DeepSeek API:", e)
+            ai_out = (
+                "1. Introduction\n\n1.1 Purpose\n\nUnable to generate content due to API error.\n\n"
+                "1.2 Scope\n\n"
+            )
 
-        out_dir = iflow / "docs"
-        out_dir.mkdir(exist_ok=True)
+        out_dir = iflow_dir / "docs"
+        out_dir.mkdir(parents=True, exist_ok=True)
 
         fname = sanitize_filename(display_name)
-
-        docx_path = out_dir / f"{fname}.docx"
         md_path = out_dir / f"{fname}.md"
+        docx_path = out_dir / f"{fname}.docx"
 
-        md_path.write_text(ai_text, encoding="utf-8")
-        write_docx(docx_path, ai_text, display_name)
+        md_path.write_text(ai_out, encoding="utf-8")
+        write_docx(docx_path, ai_out, display_name)
 
-        print("✔ Created:", docx_path)
+        print("✔ Saved:", docx_path)
 
-    print("\n✨ Documentation Generated Successfully!")
+    print("\n✨ All done.")
 
 
 if __name__ == "__main__":
