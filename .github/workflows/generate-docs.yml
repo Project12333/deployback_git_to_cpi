@@ -1,52 +1,50 @@
-name: Generate CPI Documentation (DeepSeek 70B)
+name: Generate CPI Documentation
 
 on:
   workflow_dispatch:
     inputs:
-      package_id:
+      package:
+        description: "Enter the CPI Package Folder Name"
         required: true
-        type: string
-        description: "Enter the package folder name inside cpi-artifacts"
-
-permissions:
-  contents: write
+        default: "Practice"
 
 jobs:
-  docs:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install dependencies
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Ollama
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y pandoc jq
+          curl -fsSL https://ollama.com/install.sh | sh
+          sudo systemctl start ollama
 
-      - name: Start Ollama + Pull DeepSeek 70B
+      - name: Pull DeepSeek R1
         run: |
-          docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
-          sleep 20
-          docker exec ollama ollama pull deepseek-r1:70b
-          docker exec ollama ollama run deepseek-r1:70b "warmup"
+          ollama pull deepseek-r1
 
-      - name: Make scripts executable
-        run: chmod +x tools/*.sh tools/*.py
-
-      - name: Generate Documentation
-        run: tools/ollama_generate_docs.sh "${{ github.event.inputs.package_id }}"
-
-      - name: Commit documentation
+      - name: Run Documentation Generator
         run: |
-          git config user.name "github-actions"
+          chmod +x tools/run_generate_docs.sh
+          ./tools/run_generate_docs.sh "${{ github.event.inputs.package }}"
+
+      - name: Commit Docs
+        run: |
+          git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add cpi-artifacts/${{ github.event.inputs.package_id }} || true
-
-          if git diff --cached --quiet; then
-            echo "No documentation changes to commit."
-            exit 0
+          git add cpi-artifacts || true
+          if git diff --staged --quiet; then
+            echo "No docs to commit."
+          else
+            git commit -m "Auto-generated docs for package ${{ github.event.inputs.package }}"
+            git push
           fi
-
-          git commit -m "Generated CPI Documentation using DeepSeek 70B for package ${{ github.event.inputs.package_id }}"
-          git push || true
