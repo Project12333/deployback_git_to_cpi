@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Generate documentation for a specific CPI package.
-Output: <iflow_folder>/docs/<iflowname>.md and .docx
+SAFE VERSION — NO TRIPLE QUOTES ANYWHERE
+Generates documentation for CPI iFlows inside a selected package.
+Outputs:
+    <IFLOW_DIR>/docs/<IFLOW_NAME>.md
+    <IFLOW_DIR>/docs/<IFLOW_NAME>.docx
 """
 
 import os
@@ -9,16 +12,15 @@ import sys
 import argparse
 import subprocess
 import requests
-import textwrap
 from pathlib import Path
 from datetime import datetime
 
 from docx import Document
 from docx.shared import Inches, Pt
 
-# -----------------------
+# --------------------------
 # Load external SYSTEM PROMPT
-# -----------------------
+# --------------------------
 
 SYSTEM_PROMPT = Path("tools/prompts/system_prompt.txt").read_text(encoding="utf-8")
 
@@ -29,9 +31,9 @@ SAP_LOGO = "tools/logos/sap.png"
 MM_LOGO = "tools/logos/motiveminds.png"
 
 
-# -----------------------
-# Find iFlows inside selected package folder
-# -----------------------
+# --------------------------
+# Utility functions
+# --------------------------
 
 def find_iflows(package_dir: Path):
     roots = set()
@@ -43,10 +45,6 @@ def find_iflows(package_dir: Path):
     return sorted(roots)
 
 
-# -----------------------
-# Collect artifacts
-# -----------------------
-
 def collect_artifacts(iflow_dir: Path):
     parts = []
     for root, _, files in os.walk(iflow_dir):
@@ -57,15 +55,15 @@ def collect_artifacts(iflow_dir: Path):
                     content = p.read_text(encoding="utf-8", errors="replace")
                 except:
                     content = "[UNREADABLE FILE]"
-                parts.append(f"\n--- START ARTIFACT: {p} ---\n{content}\n--- END ARTIFACT: {p} ---\n")
+
+                parts.append("\n--- START ARTIFACT: " + str(p) + " ---\n" +
+                             content +
+                             "\n--- END ARTIFACT: " + str(p) + " ---\n")
+
     return "\n".join(parts)
 
 
-# -----------------------
-# Call Ollama
-# -----------------------
-
-def call_ollama(system_prompt, user_prompt):
+def call_ollama(system_prompt: str, user_prompt: str):
     payload = {
         "model": MODEL_NAME,
         "messages": [
@@ -75,22 +73,24 @@ def call_ollama(system_prompt, user_prompt):
         "temperature": 0.1
     }
 
-    resp = requests.post(OLLAMA_URL, json=payload, timeout=300)
+    resp = requests.post(OLLAMA_URL, json=payload, timeout=600)
     resp.raise_for_status()
+
     data = resp.json()
 
-    # Clean content
+    # Standard Ollama response
     if "choices" in data:
-        return data["choices"][0]["message"]["content"]
+        msg = data["choices"][0]["message"]
+        if isinstance(msg, dict) and "content" in msg:
+            return msg["content"]
 
-    return data.get("content", "")
+    if "content" in data:
+        return data["content"]
+
+    return str(data)
 
 
-# -----------------------
-# Build Cover HTML
-# -----------------------
-
-def build_cover(iflow_name):
+def build_cover_html(iflow_name: str):
     author = subprocess.run(
         ["git", "log", "-1", "--pretty=format:%an"],
         capture_output=True, text=True
@@ -103,43 +103,41 @@ def build_cover(iflow_name):
 
     date = datetime.utcnow().strftime("%Y-%m-%d")
 
-    return f"""
-<div style="float:left;">
-<img src="{SAP_LOGO}" width="150"/>
-</div>
+    html = ""
 
-<div style="float:right;">
-<img src="{MM_LOGO}" width="150"/>
-</div>
+    html += "<div style='float:left;'>"
+    html += "<img src='" + SAP_LOGO + "' width='150'/>"
+    html += "</div>"
 
-<div style="clear:both;"></div>
-<div style="height:60px;"></div>
+    html += "<div style='float:right;'>"
+    html += "<img src='" + MM_LOGO + "' width='150'/>"
+    html += "</div>"
 
-<h1 style='color:#1f4e79; text-align:center; font-size:36px;'>{iflow_name}</h1>
-<h2 style='color:#1f4e79; text-align:center;'>SAP CPI Technical Specification Document</h2>
+    html += "<div style='clear:both;'></div>"
+    html += "<div style='height:60px;'></div>"
 
-<div style="height:40px;"></div>
+    html += "<h1 style='text-align:center; color:#1f4e79; font-size:36px;'>" + iflow_name + "</h1>"
+    html += "<h2 style='text-align:center; color:#1f4e79;'>SAP CPI Technical Specification Document</h2>"
 
-<table border="1" style="width:400px; margin:0 auto;">
-<tr><td><b>Author:</b></td><td>{author}</td></tr>
-<tr><td><b>Date:</b></td><td>{date}</td></tr>
-<tr><td><b>Version:</b></td><td>{version}</td></tr>
-</table>
+    html += "<div style='height:40px;'></div>"
 
-<div style="page-break-after: always;"></div>
-"""
+    html += "<table border='1' style='width:400px; margin:0 auto; border-collapse:collapse;'>"
+    html += "<tr><td><b>Author:</b></td><td>" + author + "</td></tr>"
+    html += "<tr><td><b>Date:</b></td><td>" + date + "</td></tr>"
+    html += "<tr><td><b>Version:</b></td><td>" + version + "</td></tr>"
+    html += "</table>"
+
+    html += "<div style='page-break-after: always;'></div>"
+
+    return html
 
 
-# -----------------------
-# DOCX Writer
-# -----------------------
-
-def write_docx(doc_path: Path, md: str, iflow_name: str):
+def write_docx(doc_path: Path, content: str, iflow_name: str):
     doc = Document()
 
-    # Logo Row
-    row = doc.add_table(rows=1, cols=2)
-    left, right = row.rows[0].cells
+    # Cover logos
+    table = doc.add_table(rows=1, cols=2)
+    left, right = table.rows[0].cells
 
     try:
         left.paragraphs[0].add_run().add_picture(SAP_LOGO, width=Inches(1.6))
@@ -147,23 +145,23 @@ def write_docx(doc_path: Path, md: str, iflow_name: str):
     except:
         pass
 
-    t = doc.add_paragraph()
-    t.alignment = 1
-    run = t.add_run(iflow_name)
+    title = doc.add_paragraph()
+    title.alignment = 1
+    run = title.add_run(iflow_name)
     run.bold = True
     run.font.size = Pt(26)
 
     doc.add_page_break()
 
-    for line in md.split("\n"):
+    for line in content.split("\n"):
         doc.add_paragraph(line)
 
     doc.save(doc_path)
 
 
-# -----------------------
+# --------------------------
 # MAIN
-# -----------------------
+# --------------------------
 
 def main():
     parser = argparse.ArgumentParser()
@@ -171,27 +169,61 @@ def main():
     args = parser.parse_args()
 
     package_path = Path("cpi-artifacts") / args.package
+
     if not package_path.exists():
-        print(f"❌ Package not found: {package_path}")
+        print("❌ Package not found:", package_path)
         sys.exit(1)
 
-    print(f"📦 Selected package: {args.package}")
+    print("📦 Selected package:", args.package)
 
     iflows = find_iflows(package_path)
     if not iflows:
-        print("❌ No iFlows found in this package.")
+        print("❌ No iFlows found in the package.")
         return
 
-    print(f"➡ Found {len(iflows)} iFlows")
+    print("➡ Found", len(iflows), "iFlow(s)")
 
     for iflow in iflows:
-        name = iflow.name
-        print(f"\n--- Processing iFlow: {name} ---")
+        iflow_name = iflow.name
+        print("\n--- Processing iFlow:", iflow_name, "---")
 
         artifacts = collect_artifacts(iflow)
 
-        user_prompt = f"""
-Generate documentation for the iFlow '{name}' with the 6-section format:
+        # SAFE: no triple-quotes
+        user_prompt = (
+            "Generate documentation for the SAP CPI iFlow named '" + iflow_name + "'. "
+            "Follow the strict 6-section hierarchy and format. "
+            "Below are the complete iFlow artifacts:\n\n"
+            "```text\n" +
+            artifacts +
+            "\n```"
+        )
 
-```text
-{artifacts}
+        generated = call_ollama(SYSTEM_PROMPT, user_prompt)
+
+        cover = build_cover_html(iflow_name)
+        final_md = cover + generated
+
+        # Page break replacement
+        final_md = final_md.replace(
+            "---TOC-END-PAGE-BREAK---",
+            "<div style='page-break-after: always;'></div>"
+        )
+
+        out_dir = iflow / "docs"
+        out_dir.mkdir(exist_ok=True)
+
+        md_path = out_dir / (iflow_name + ".md")
+        doc_path = out_dir / (iflow_name + ".docx")
+
+        md_path.write_text(final_md, encoding="utf-8")
+        write_docx(doc_path, final_md, iflow_name)
+
+        print("✔ Saved:", md_path)
+        print("✔ Saved:", doc_path)
+
+    print("\n✨ Documentation generation completed successfully!")
+
+
+if __name__ == "__main__":
+    main()
