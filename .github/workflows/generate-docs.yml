@@ -4,30 +4,34 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: "Enter CPI Package Name"
+        description: "Enter the CPI Package Folder Name"
         required: true
+        default: "Practice"
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
-          pip install --upgrade pip
-          pip install requests python-docx
+          python -m pip install --upgrade pip
+          python -m pip install requests python-docx
 
-      - name: Generate Documentation via OpenRouter
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      - name: Run Documentation Generator
         run: |
           chmod +x tools/run_generate_docs.sh
           ./tools/run_generate_docs.sh "${{ github.event.inputs.package }}"
@@ -38,7 +42,7 @@ jobs:
           git config user.email "actions@github.com"
           git add cpi-artifacts || true
           if git diff --staged --quiet; then
-            echo "No changes"
+            echo "No changes to commit."
           else
             git commit -m "Auto-generated docs"
             git push
