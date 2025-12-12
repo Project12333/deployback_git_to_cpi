@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate SAP CPI Documentation using DeepSeek-R1 model through OpenRouter API.
-Requires GitHub secret: OPENROUTER_API_KEY.
-
-This version includes:
-✔ Correct HTTP-Referer (your GitHub repo)
-✔ Correct X-Title header
-✔ DeepSeek-R1:free model
-✔ DOCX output (cover + TOC + AI summary)
+Generate per-iFlow DOCX/MD using a local Ollama server (deepseek-r1:7b).
+Assumes Ollama HTTP API available at http://localhost:11434/api/chat
 """
 
 import os
 import re
 import sys
+import time
 import argparse
 import requests
 from pathlib import Path
@@ -21,289 +16,277 @@ from datetime import datetime
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 
+# --------------------------
+# Config
+# --------------------------
+HARDCODE_AUTHOR = "Sindhu"
+HARDCODE_VERSION = "Draft"
+HARDCODE_DATE = datetime.utcnow().strftime("%Y-%m-%d")
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
-AUTHOR_NAME = "Sindhu"
-AUTHOR_VERSION = "Draft"
-AUTHOR_DATE = datetime.utcnow().strftime("%Y-%m-%d")
-
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL_NAME = "deepseek/deepseek-r1:free"
-
-REFERER_URL = "https://github.com/Project12333/deployback_git_to_cpi"
+OLLAMA_CHAT_URL = os.environ.get("OLLAMA_CHAT_URL", "http://localhost:11434/api/chat")
+MODEL_NAME = "deepseek-r1:7b"
 
 SAP_LOGO = "tools/logos/sap.png"
 MM_LOGO = "tools/logos/motiveminds.png"
 
+SYSTEM_PROMPT = Path("tools/prompts/system_prompt.txt").read_text(encoding="utf-8", errors="ignore") \
+    if Path("tools/prompts/system_prompt.txt").exists() else (
+    "You are an SAP CPI Documentation Generator.\n"
+    "Generate COMPLETE documentation using EXACTLY this structure:\n\n"
+    "1. Introduction\n"
+    "   1.1 Purpose\n"
+    "   1.2 Scope\n\n"
+    "2. Integration Overview\n"
+    "   2.1 Integration Architecture\n"
+    "   2.2 Integration Components\n\n"
+    "3. Integration Scenarios\n"
+    "   3.1 Scenario Description\n"
+    "   3.2 Data Flows\n"
+    "   3.3 Security Requirements\n\n"
+    "4. Error Handling and Logging\n\n"
+    "5. Testing Validation\n\n"
+    "6. Reference Documents\n\n"
+    "RULES:\n- Use provided artifacts.\n- If details missing, infer reasonable CPI patterns and note assumptions.\n- Always produce all 6 sections using those exact headings."
+)
 
-SYSTEM_PROMPT = """
-You are an SAP CPI Documentation Generator.
+# --------------------------
+# Helpers
+# --------------------------
 
-Generate COMPLETE documentation using EXACTLY this structure:
-
-1. Introduction
-   1.1 Purpose
-   1.2 Scope
-
-2. Integration Overview
-   2.1 Integration Architecture
-   2.2 Integration Components
-
-3. Integration Scenarios
-   3.1 Scenario Description
-   3.2 Data Flows
-   3.3 Security Requirements
-
-4. Error Handling and Logging
-
-5. Testing Validation
-
-6. Reference Documents
-
-RULES:
-- Use provided artifacts.
-- Infer missing details but state assumptions clearly.
-- ALWAYS generate all 6 sections.
-"""
-
-
-# ============================================================
-# HELPERS
-# ============================================================
-
-def sanitize_filename(name):
+def sanitize_filename(name: str) -> str:
     name = re.sub(r"\s+", "_", name)
     name = re.sub(r'[<>:"/\\|?*]+', "", name)
-    return name[:150]
+    return name[:180]
 
 
-def find_iflows(package):
-    dirs = set()
-    for root, _, files in os.walk(package):
+def find_iflows(package_dir: Path):
+    roots = set()
+    for root, _, files in os.walk(package_dir):
         for f in files:
             if f.endswith(".iflw") or f == "iFlowContent.xml":
-                dirs.add(Path(root))
+                roots.add(Path(root))
                 break
-    return sorted(dirs)
+    return sorted(roots)
 
 
-def find_iflw_file(iflow_dir):
-    for f in iflow_dir.glob("*.iflw"):
-        return f
-    xml = iflow_dir / "iFlowContent.xml"
-    return xml if xml.exists() else None
-
-
-def extract_iflow_display_name(iflw_path):
-    if iflw_path is None:
-        return "Unknown_iFlow"
-    try:
-        content = iflw_path.read_text(encoding="utf-8", errors="replace")
-    except:
-        return sanitize_filename(iflw_path.stem)
-
-    m = re.search(r'name="(.*?)"', content)
-    if m:
-        return sanitize_filename(m.group(1))
-
-    m = re.search(r'id="(.*?)"', content)
-    if m:
-        return sanitize_filename(m.group(1))
-
-    return sanitize_filename(iflw_path.stem)
-
-
-def collect_artifacts(iflow_dir):
+def collect_artifacts(iflow_dir: Path) -> str:
     parts = []
     for root, _, files in os.walk(iflow_dir):
-        for f in files:
+        for f in sorted(files):
             if f.endswith((".iflw", ".groovy", ".xslt")) or f == "iFlowContent.xml":
                 p = Path(root) / f
                 try:
-                    txt = p.read_text(encoding="utf-8", errors="replace")
-                except:
-                    txt = "[UNREADABLE FILE]"
-                parts.append(
-                    f"\n--- START ARTIFACT: {p} ---\n"
-                    f"{txt}\n"
-                    f"--- END ARTIFACT: {p} ---\n"
-                )
+                    content = p.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    content = "[UNREADABLE FILE]"
+                parts.append(f"\n--- START ARTIFACT: {p} ---\n{content}\n--- END ARTIFACT: {p} ---\n")
     return "\n".join(parts)
 
 
-# ============================================================
-# OPENROUTER API CALL
-# ============================================================
+def find_iflw_file(iflow_dir: Path):
+    for p in iflow_dir.glob("*.iflw"):
+        return p
+    f = iflow_dir / "iFlowContent.xml"
+    return f if f.exists() else None
 
-def call_openrouter(system_prompt, user_prompt):
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        raise RuntimeError("❌ OPENROUTER_API_KEY missing in environment!")
 
-    # REQUIRED HEADERS — without these, OpenRouter returns 404
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "HTTP-Referer": REFERER_URL,
-        "X-Title": "CPI-Doc-Generator",
-        "Content-Type": "application/json",
-    }
+def extract_iflow_display_name_from_iflw(iflw_path: Path):
+    if iflw_path is None:
+        return sanitize_filename(iflow_path.name if (iflow_path := None) else "unknown_iflow")
+    try:
+        text = iflw_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return sanitize_filename(iflw_path.stem)
 
+    m = re.search(r'IntegrationFlow[^>]*name="(.*?)"', text, re.IGNORECASE)
+    if m:
+        return sanitize_filename(m.group(1))
+    m = re.search(r'IntegrationFlow[^>]*id="(.*?)"', text, re.IGNORECASE)
+    if m:
+        return sanitize_filename(m.group(1))
+    return sanitize_filename(iflw_path.stem)
+
+
+# --------------------------
+# Ollama call (chat) with retries
+# --------------------------
+
+def call_ollama(system_prompt: str, user_prompt: str, max_retries=3, backoff=3) -> str:
     payload = {
         "model": MODEL_NAME,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
-        ]
+        ],
+        "temperature": 0.05,
+        "stream": False
     }
 
-    response = requests.post(
-        OPENROUTER_URL,
-        headers=headers,
-        json=payload,
-        timeout=300
-    )
-    response.raise_for_status()
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=600)
+            resp.raise_for_status()
+            data = resp.json()
+            # expected: { "message": { "role": "assistant", "content": "..." } } or choices array
+            if isinstance(data, dict):
+                if "message" in data and isinstance(data["message"], dict) and "content" in data["message"]:
+                    return data["message"]["content"]
+                if "choices" in data and data["choices"]:
+                    c = data["choices"][0]
+                    if isinstance(c, dict) and "message" in c and "content" in c["message"]:
+                        return c["message"]["content"]
+                    if "content" in c and isinstance(c["content"], str):
+                        return c["content"]
+            # fallback to string representation
+            return str(data)
+        except Exception as e:
+            print(f"Warning: Ollama call attempt {attempt} failed: {e}", file=sys.stderr)
+            if attempt < max_retries:
+                time.sleep(backoff * attempt)
+            else:
+                raise
 
-    data = response.json()
-    return data["choices"][0]["message"]["content"]
+# --------------------------
+# DOCX writer
+# --------------------------
 
-
-# ============================================================
-# DOCX BUILDER
-# ============================================================
-
-def write_doc(path, content, title):
+def write_docx(doc_path: Path, ai_text: str, iflow_name: str):
     doc = Document()
 
-    # LOGOS HEADER
-    tbl = doc.add_table(1, 2)
-    left, right = tbl.rows[0].cells
-
+    # logos aligned left / right
+    table = doc.add_table(1, 2)
+    left, right = table.rows[0].cells
     try:
-        left.paragraphs[0].add_run().add_picture(SAP_LOGO, width=Inches(1.5))
-    except:
+        pleft = left.paragraphs[0]
+        pleft.alignment = 0
+        pleft.add_run().add_picture(SAP_LOGO, width=Inches(1.5))
+    except Exception:
         pass
-
     try:
-        p = right.paragraphs[0]
-        p.alignment = 2
-        p.add_run().add_picture(MM_LOGO, width=Inches(1.5))
-    except:
+        pright = right.paragraphs[0]
+        pright.alignment = 2
+        pright.add_run().add_picture(MM_LOGO, width=Inches(1.5))
+    except Exception:
         pass
 
     doc.add_paragraph("\n\n")
 
-    # TITLE
-    p = doc.add_paragraph()
-    p.alignment = 1
-    r = p.add_run(title)
-    r.bold = True
-    r.font.size = Pt(28)
-    r.font.color.rgb = RGBColor(31, 78, 121)
+    title = doc.add_paragraph()
+    title.alignment = 1
+    run = title.add_run(iflow_name)
+    run.bold = True
+    run.font.size = Pt(28)
+    try:
+        run.font.color.rgb = RGBColor(31, 78, 121)
+    except Exception:
+        pass
 
     doc.add_paragraph("\n")
 
-    # AUTHOR TABLE
-    t = doc.add_table(3, 2)
-    t.style = "Table Grid"
-
-    t.cell(0, 0).text = "Author:"
-    t.cell(1, 0).text = "Date:"
-    t.cell(2, 0).text = "Version:"
-
-    t.cell(0, 1).text = AUTHOR_NAME
-    t.cell(1, 1).text = AUTHOR_DATE
-    t.cell(2, 1).text = AUTHOR_VERSION
+    info = doc.add_table(3, 2)
+    info.style = "Table Grid"
+    info.cell(0, 0).text = "Author:"
+    info.cell(1, 0).text = "Date:"
+    info.cell(2, 0).text = "Version:"
+    info.cell(0, 1).text = HARDCODE_AUTHOR
+    info.cell(1, 1).text = HARDCODE_DATE
+    info.cell(2, 1).text = HARDCODE_VERSION
 
     doc.add_page_break()
 
-    # TABLE OF CONTENTS
-    toc = [
+    # TOC (compact)
+    toc_lines = [
         "Table of Contents",
         "1. Introduction",
         "   1.1 Purpose",
         "   1.2 Scope",
-        "",
         "2. Integration Overview",
         "   2.1 Integration Architecture",
         "   2.2 Integration Components",
-        "",
         "3. Integration Scenarios",
         "   3.1 Scenario Description",
         "   3.2 Data Flows",
         "   3.3 Security Requirements",
-        "",
         "4. Error Handling and Logging",
         "5. Testing Validation",
         "6. Reference Documents",
     ]
-    for line in toc:
-        doc.add_paragraph(line)
+    for ln in toc_lines:
+        doc.add_paragraph(ln)
 
     doc.add_page_break()
 
-    # AI CONTENT
-    for line in content.split("\n"):
+    # AI content
+    for line in ai_text.splitlines():
         doc.add_paragraph(line)
 
-    doc.save(path)
+    doc.save(doc_path)
 
 
-# ============================================================
-# MAIN LOGIC
-# ============================================================
+# --------------------------
+# Main
+# --------------------------
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--package", required=True)
     args = parser.parse_args()
 
-    pkg = Path("cpi-artifacts") / args.package
-    if not pkg.exists():
-        print("❌ Package not found:", pkg)
+    package_path = Path("cpi-artifacts") / args.package
+    if not package_path.exists():
+        print("Package not found:", package_path)
         sys.exit(1)
 
-    iflows = find_iflows(pkg)
-    print("➡ Found", len(iflows), "iFlows")
+    iflows = find_iflows(package_path)
+    if not iflows:
+        print("No iFlows found")
+        return
+
+    print("Found", len(iflows), "iFlows")
 
     for iflow in iflows:
-        print("\n--- Processing:", iflow)
-
-        iflw_file = find_iflw_file(iflow)
-        display_name = extract_iflow_display_name(iflw_file)
-
-        print("📌 iFlow Name:", display_name)
+        print("\nProcessing iFlow dir:", iflow)
+        iflw = find_iflw_file(iflow)
+        display_name = extract_iflow_display_name_from_iflw(iflw)
+        print("Using display name:", display_name)
 
         artifacts = collect_artifacts(iflow)
-
         user_prompt = (
-            f"Generate SAP CPI documentation for iFlow '{display_name}'.\n"
-            f"Use EXACT 6-section structure.\n\n"
-            f"ARTIFACTS:\n{artifacts}"
+            f"Generate documentation for SAP CPI iFlow '{display_name}' using EXACT headings:\n\n"
+            "1. Introduction\n"
+            "   1.1 Purpose\n"
+            "   1.2 Scope\n\n"
+            "2. Integration Overview\n"
+            "   2.1 Integration Architecture\n"
+            "   2.2 Integration Components\n\n"
+            "3. Integration Scenarios\n"
+            "   3.1 Scenario Description\n"
+            "   3.2 Data Flows\n"
+            "   3.3 Security Requirements\n\n"
+            "4. Error Handling and Logging\n\n"
+            "5. Testing Validation\n\n"
+            "6. Reference Documents\n\n"
+            "Use the following artifacts (files and content):\n\n"
+            + artifacts
         )
 
         try:
-            ai_output = call_openrouter(SYSTEM_PROMPT, user_prompt)
+            ai_text = call_ollama(SYSTEM_PROMPT, user_prompt)
         except Exception as e:
-            print("❌ OpenRouter Error:", e)
-            ai_output = "Documentation could not be generated due to API error."
+            print("Error calling Ollama:", e)
+            ai_text = "Error: could not generate documentation due to Ollama error."
 
-        outdir = iflow / "docs"
-        outdir.mkdir(exist_ok=True)
+        out = iflow / "docs"
+        out.mkdir(parents=True, exist_ok=True)
+        base = sanitize_filename(display_name)
+        md_path = out / f"{base}.md"
+        docx_path = out / f"{base}.docx"
 
-        fname = sanitize_filename(display_name)
-        md_path = outdir / f"{fname}.md"
-        doc_path = outdir / f"{fname}.docx"
+        md_path.write_text(ai_text, encoding="utf-8")
+        write_docx(docx_path, ai_text, display_name)
+        print("Saved:", docx_path)
 
-        md_path.write_text(ai_output, encoding="utf-8")
-        write_doc(doc_path, ai_output, display_name)
-
-        print("✔ Saved:", doc_path)
-
-    print("\n✨ Documentation Completed Successfully")
+    print("\nDone.")
 
 
 if __name__ == "__main__":
