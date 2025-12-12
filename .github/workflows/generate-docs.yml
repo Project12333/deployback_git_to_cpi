@@ -39,8 +39,10 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add cpi-artifacts || true
+
           if git diff --staged --quiet; then
             echo "No docs to commit."
           else
-            git commit -m "Auto-generated docs"
+            git commit -m "Auto-generated docs for package ${{ github.event.inputs.package }}"
             git push
+          fi
