@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Generate per-iFlow DOCX/MD using DeepSeek Cloud API (chat endpoint).
-Reads DEEPSEEK_API_KEY from env and optional DEEPSEEK_API_URL.
+Generate per-iFlow documentation using DeepSeek-R1 model via OPENROUTER.
+Requires OPENROUTER_API_KEY in environment.
+
+API Endpoint:
+    https://openrouter.ai/api/v1/chat/completions
 """
 
 import os
@@ -11,69 +14,67 @@ import argparse
 import requests
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
-
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 
-# ------------------------
+# ============================================================
 # CONFIG
-# ------------------------
-HARDCODE_AUTHOR = "Sindhu"
-HARDCODE_DATE = datetime.utcnow().strftime("%Y-%m-%d")
-HARDCODE_VERSION = "Draft"
+# ============================================================
 
-MODEL_NAME = "deepseek-r1"
-# default cloud endpoint (can be overridden by env DEEPSEEK_API_URL)
-DEFAULT_DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+AUTHOR_NAME = "Sindhu"
+AUTHOR_VERSION = "Draft"
+AUTHOR_DATE = datetime.utcnow().strftime("%Y-%m-%d")
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL_NAME = "deepseek/deepseek-r1:free"
 
 SAP_LOGO = "tools/logos/sap.png"
 MM_LOGO = "tools/logos/motiveminds.png"
 
-PROMPT_FILE = Path("tools/prompts/system_prompt.txt")
+SYSTEM_PROMPT_DEFAULT = """
+You are an SAP CPI Documentation Generator.
+
+Generate COMPLETE documentation using EXACTLY this structure:
+
+1. Introduction
+   1.1 Purpose
+   1.2 Scope
+
+2. Integration Overview
+   2.1 Integration Architecture
+   2.2 Integration Components
+
+3. Integration Scenarios
+   3.1 Scenario Description
+   3.2 Data Flows
+   3.3 Security Requirements
+
+4. Error Handling and Logging
+
+5. Testing Validation
+
+6. Reference Documents
+
+RULES:
+- Use provided artifacts.
+- Infer missing details, but state assumptions clearly.
+- ALWAYS fill all sections.
+"""
 
 
-# ------------------------
-# Load system prompt
-# ------------------------
-if PROMPT_FILE.exists():
-    SYSTEM_PROMPT = PROMPT_FILE.read_text(encoding="utf-8", errors="ignore")
-else:
-    SYSTEM_PROMPT = (
-        "You are an SAP CPI Documentation Generator.\n"
-        "Generate COMPLETE documentation using EXACTLY this structure:\n\n"
-        "1. Introduction\n"
-        "   1.1 Purpose\n"
-        "   1.2 Scope\n\n"
-        "2. Integration Overview\n"
-        "   2.1 Integration Architecture\n"
-        "   2.2 Integration Components\n\n"
-        "3. Integration Scenarios\n"
-        "   3.1 Scenario Description\n"
-        "   3.2 Data Flows\n"
-        "   3.3 Security Requirements\n\n"
-        "4. Error Handling and Logging\n\n"
-        "5. Testing Validation\n\n"
-        "6. Reference Documents\n\n"
-        "RULES:\n"
-        "- Use provided artifacts.\n"
-        "- Infer missing details but explicitly state assumptions.\n"
-        "- Always generate all 6 sections with the exact headings."
-    )
+# ============================================================
+# HELPERS
+# ============================================================
 
-
-# ------------------------
-# Helpers
-# ------------------------
-def sanitize_filename(name: str) -> str:
+def sanitize_filename(name):
     name = re.sub(r"\s+", "_", name)
     name = re.sub(r'[<>:"/\\|?*]+', "", name)
-    return name[:200]
+    return name[:150]
 
 
-def find_iflows(package_path: Path):
+def find_iflows(package):
     roots = set()
-    for root, _, files in os.walk(package_path):
+    for root, _, files in os.walk(package):
         for f in files:
             if f.endswith(".iflw") or f == "iFlowContent.xml":
                 roots.add(Path(root))
@@ -81,57 +82,62 @@ def find_iflows(package_path: Path):
     return sorted(roots)
 
 
-def collect_artifacts(iflow_dir: Path) -> str:
-    parts = []
-    for root, _, files in os.walk(iflow_dir):
-        for fname in files:
-            if fname.endswith((".iflw", ".groovy", ".xslt")) or fname == "iFlowContent.xml":
-                p = Path(root) / fname
-                try:
-                    txt = p.read_text(encoding="utf-8", errors="replace")
-                except Exception:
-                    txt = "[UNREADABLE FILE]"
-                parts.append(f"\n--- START ARTIFACT: {p} ---\n{txt}\n--- END ARTIFACT: {p} ---\n")
-    return "\n".join(parts)
-
-
-def find_iflw(iflow_dir: Path) -> Optional[Path]:
+def find_iflw_file(iflow_dir):
     for f in iflow_dir.glob("*.iflw"):
         return f
     xml = iflow_dir / "iFlowContent.xml"
     return xml if xml.exists() else None
 
 
-def extract_display_name(iflw_file: Optional[Path]) -> str:
-    if iflw_file is None:
-        return "unknown_iflow"
+def extract_iflow_display_name(iflw_path):
+    if iflw_path is None:
+        return "Unknown_iFlow"
     try:
-        txt = iflw_file.read_text(encoding="utf-8", errors="replace")
-    except Exception:
-        return sanitize_filename(iflw_file.stem)
-    m = re.search(r'IntegrationFlow[^>]*name="(.*?)"', txt, re.IGNORECASE)
+        text = iflw_path.read_text(encoding="utf-8", errors="replace")
+    except:
+        return sanitize_filename(iflw_path.stem)
+
+    m = re.search(r'name="(.*?)"', text)
     if m:
         return sanitize_filename(m.group(1))
-    m = re.search(r'IntegrationFlow[^>]*id="(.*?)"', txt, re.IGNORECASE)
+
+    m = re.search(r'id="(.*?)"', text)
     if m:
         return sanitize_filename(m.group(1))
-    return sanitize_filename(iflw_file.stem)
+
+    return sanitize_filename(iflw_path.stem)
 
 
-# ------------------------
-# DeepSeek Cloud call
-# ------------------------
-def call_deepseek(system_prompt: str, user_prompt: str) -> str:
-    key = os.environ.get("DEEPSEEK_API_KEY")
-    if not key:
-        raise RuntimeError("DEEPSEEK_API_KEY is not set in the environment.")
+def collect_artifacts(iflow_dir):
+    parts = []
+    for root, _, files in os.walk(iflow_dir):
+        for f in files:
+            if f.endswith((".iflw", ".groovy", ".xslt")) or f == "iFlowContent.xml":
+                full = Path(root) / f
+                try:
+                    txt = full.read_text(encoding="utf-8", errors="replace")
+                except:
+                    txt = "[UNREADABLE FILE]"
+                parts.append(
+                    f"\n--- START ARTIFACT: {full} ---\n{txt}\n--- END ARTIFACT: {full} ---\n"
+                )
+    return "\n".join(parts)
 
-    url = os.environ.get("DEEPSEEK_API_URL", DEFAULT_DEEPSEEK_API_URL)
+
+# ============================================================
+# OPENROUTER API CALL
+# ============================================================
+
+def call_openrouter(system_prompt, user_prompt):
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is missing in environment!")
 
     headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "User-Agent": "cpi-docs-generator/1.0"
+        "Authorization": f"Bearer {api_key}",
+        "HTTP-Referer": "https://github.com",
+        "X-Title": "CPI iFlow Doc Generator",
+        "Content-Type": "application/json"
     }
 
     payload = {
@@ -139,59 +145,41 @@ def call_deepseek(system_prompt: str, user_prompt: str) -> str:
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.1
+        ]
     }
 
-    resp = requests.post(url, json=payload, headers=headers, timeout=600)
-    resp.raise_for_status()
-    data = resp.json()
+    response = requests.post(OPENROUTER_URL, json=payload, headers=headers, timeout=600)
+    response.raise_for_status()
 
-    # Try to pull typical fields
-    if isinstance(data, dict):
-        # common: choices -> [ { message: { content: "..." } } ]
-        if "choices" in data and data["choices"]:
-            try:
-                msg = data["choices"][0].get("message")
-                if isinstance(msg, dict) and "content" in msg:
-                    return msg["content"]
-            except Exception:
-                pass
-        # some providers return { message: { content: "..." } }
-        if "message" in data and isinstance(data["message"], dict) and "content" in data["message"]:
-            return data["message"]["content"]
-        # fallback to top-level 'content' or 'response'
-        if "content" in data and isinstance(data["content"], str):
-            return data["content"]
-        if "response" in data and isinstance(data["response"], str):
-            return data["response"]
+    data = response.json()
 
-    # final fallback: convert to string
-    return str(data)
+    try:
+        return data["choices"][0]["message"]["content"]
+    except Exception:
+        return str(data)
 
 
-# ------------------------
-# DOCX writer (cover, toc, ai content)
-# ------------------------
-def write_docx(path: Path, content: str, title_text: str):
+# ============================================================
+# DOCX BUILDER
+# ============================================================
+
+def write_doc(path, content, title):
     doc = Document()
 
-    # logos table (left/right)
+    # --- Cover logos (left/right)
     tbl = doc.add_table(1, 2)
     left, right = tbl.rows[0].cells
 
-    p_left = left.paragraphs[0]
-    p_left.alignment = 0
     try:
-        p_left.add_run().add_picture(SAP_LOGO, width=Inches(1.5))
-    except Exception:
+        left.paragraphs[0].add_run().add_picture(SAP_LOGO, width=Inches(1.5))
+    except:
         pass
 
-    p_right = right.paragraphs[0]
-    p_right.alignment = 2
     try:
-        p_right.add_run().add_picture(MM_LOGO, width=Inches(1.5))
-    except Exception:
+        p = right.paragraphs[0]
+        p.alignment = 2
+        p.add_run().add_picture(MM_LOGO, width=Inches(1.5))
+    except:
         pass
 
     doc.add_paragraph("\n\n")
@@ -199,30 +187,27 @@ def write_docx(path: Path, content: str, title_text: str):
     # Title
     p = doc.add_paragraph()
     p.alignment = 1
-    r = p.add_run(title_text)
+    r = p.add_run(title)
     r.bold = True
     r.font.size = Pt(28)
-    try:
-        r.font.color.rgb = RGBColor(31, 78, 121)
-    except Exception:
-        pass
+    r.font.color.rgb = RGBColor(31, 78, 121)
 
     doc.add_paragraph("\n")
 
-    # Author/Date/Version
-    info = doc.add_table(3, 2)
-    info.style = "Table Grid"
-    info.cell(0, 0).text = "Author:"
-    info.cell(1, 0).text = "Date:"
-    info.cell(2, 0).text = "Version:"
-    info.cell(0, 1).text = HARDCODE_AUTHOR
-    info.cell(1, 1).text = HARDCODE_DATE
-    info.cell(2, 1).text = HARDCODE_VERSION
+    tbl2 = doc.add_table(3, 2)
+    tbl2.style = "Table Grid"
+    tbl2.cell(0, 0).text = "Author:"
+    tbl2.cell(1, 0).text = "Date:"
+    tbl2.cell(2, 0).text = "Version:"
+
+    tbl2.cell(0, 1).text = AUTHOR_NAME
+    tbl2.cell(1, 1).text = AUTHOR_DATE
+    tbl2.cell(2, 1).text = AUTHOR_VERSION
 
     doc.add_page_break()
 
-    # TOC (static)
-    toc_lines = [
+    # TOC
+    toc = [
         "Table of Contents",
         "1. Introduction",
         "   1.1 Purpose",
@@ -239,77 +224,71 @@ def write_docx(path: Path, content: str, title_text: str):
         "",
         "4. Error Handling and Logging",
         "5. Testing Validation",
-        "6. Reference Documents"
+        "6. Reference Documents",
     ]
-    for line in toc_lines:
+    for line in toc:
         doc.add_paragraph(line)
 
     doc.add_page_break()
 
-    # AI content
+    # AI generated content
     for line in content.split("\n"):
         doc.add_paragraph(line)
 
     doc.save(path)
 
 
-# ------------------------
+# ============================================================
 # MAIN
-# ------------------------
+# ============================================================
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--package", required=True, help="Folder name inside cpi-artifacts/")
+    parser.add_argument("--package", required=True)
     args = parser.parse_args()
 
-    package_path = Path("cpi-artifacts") / args.package
-    if not package_path.exists():
-        print("❌ Package not found:", package_path)
+    pkg = Path("cpi-artifacts") / args.package
+    if not pkg.exists():
+        print("❌ Package not found:", pkg)
         sys.exit(1)
 
-    print("📦 Generating docs for package:", args.package)
-    iflow_dirs = find_iflows(package_path)
-    print("➡ Found", len(iflow_dirs), "iFlow(s)")
+    iflows = find_iflows(pkg)
+    print("➡ Found", len(iflows), "iFlows")
 
-    for iflow_dir in iflow_dirs:
-        print("\n--- Processing:", iflow_dir)
-        iflw = find_iflw(iflow_dir)
-        display_name = extract_display_name(iflw)
-        print("📌 iFlow display name:", display_name)
+    for iflow in iflows:
+        print("\n--- Processing:", iflow)
 
-        artifacts = collect_artifacts(iflow_dir)
-        if not artifacts.strip():
-            print("⚠️ No artifacts found for", display_name)
+        iflw_file = find_iflw_file(iflow)
+        display_name = extract_iflow_display_name(iflw_file)
+        print("📌 iFlow Name:", display_name)
 
+        artifacts = collect_artifacts(iflow)
         user_prompt = (
-            f"Generate SAP CPI documentation for iFlow '{display_name}'. "
-            "Produce sections 1-6 exactly as listed. Use the artifacts below "
-            "to populate Purpose, Scope, Architecture, Components, Scenarios, "
-            "Data Flows, Security, Error Handling, Testing, and References.\n\n"
-            "ARTIFACTS:\n" + artifacts
+            f"Generate SAP CPI documentation for iFlow '{display_name}'.\n"
+            "Use EXACT 6 sections.\n\n"
+            "ARTIFACTS:\n"
+            + artifacts
         )
 
         try:
-            ai_out = call_deepseek(SYSTEM_PROMPT, user_prompt)
+            ai_text = call_openrouter(SYSTEM_PROMPT_DEFAULT, user_prompt)
         except Exception as e:
-            print("❌ Error calling DeepSeek API:", e)
-            ai_out = (
-                "1. Introduction\n\n1.1 Purpose\n\nUnable to generate content due to API error.\n\n"
-                "1.2 Scope\n\n"
-            )
+            print("❌ Error calling OpenRouter:", e)
+            ai_text = "Error generating documentation."
 
-        out_dir = iflow_dir / "docs"
-        out_dir.mkdir(parents=True, exist_ok=True)
+        outdir = iflow / "docs"
+        outdir.mkdir(exist_ok=True)
 
         fname = sanitize_filename(display_name)
-        md_path = out_dir / f"{fname}.md"
-        docx_path = out_dir / f"{fname}.docx"
+        md_path = outdir / f"{fname}.md"
+        docx_path = outdir / f"{fname}.docx"
 
-        md_path.write_text(ai_out, encoding="utf-8")
-        write_docx(docx_path, ai_out, display_name)
+        md_path.write_text(ai_text, encoding="utf-8")
+        write_doc(docx_path, ai_text, display_name)
 
         print("✔ Saved:", docx_path)
 
-    print("\n✨ All done.")
+    print("\n✨ Documentation Completed")
 
 
 if __name__ == "__main__":
