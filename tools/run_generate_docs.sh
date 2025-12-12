@@ -1,11 +1,19 @@
+
+```bash
 #!/usr/bin/env bash
 set -e
 
-echo "Installing dependencies..."
+PACKAGE="$1"
+
+if [ -z "$PACKAGE" ]; then
+  echo "❌ ERROR: Package name not provided."
+  echo "Usage: ./tools/run_generate_docs.sh <PACKAGE_NAME>"
+  exit 1
+fi
+
+echo "📦 Running documentation generator for package: $PACKAGE"
+
 python -m pip install --upgrade pip
 python -m pip install requests python-docx
 
-echo "Running generator..."
-python tools/generate_iflow_docs.py
-
-echo "Documentation generated."
+python tools/generate_iflow_docs.py --package "$PACKAGE"
