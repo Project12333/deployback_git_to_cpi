@@ -6,7 +6,6 @@ on:
       package:
         description: "Enter the CPI Package Folder Name"
         required: true
-        default: "Practice"
 
 jobs:
   build:
@@ -15,8 +14,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -45,6 +42,5 @@ jobs:
           if git diff --staged --quiet; then
             echo "No docs to commit."
           else
-            git commit -m "Auto-generated docs for package ${{ github.event.inputs.package }}"
+            git commit -m "Auto-generated docs"
             git push
-          fi
