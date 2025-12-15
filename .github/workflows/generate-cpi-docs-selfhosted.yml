@@ -16,20 +16,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Python dependencies
+      - name: Setup Python & Install Dependencies
+        shell: powershell
         run: |
+          python --version
           python -m pip install --upgrade pip
           python -m pip install requests python-docx
 
-      - name: Verify Ollama
+      - name: Verify Ollama is Running
+        shell: powershell
         run: |
+          ollama --version
           ollama list
 
-      - name: Generate CPI Documentation using Ollama AI
+      - name: Generate CPI Documentation using Ollama
+        shell: powershell
         run: |
-          python tools\generate_iflow_docs.py --package ${{ github.event.inputs.package }}
+          python tools\generate_iflow_docs.py --package "${{ github.event.inputs.package }}"
 
-      - name: Commit generated docs
+      - name: Commit generated documentation
         shell: powershell
         run: |
           git status
