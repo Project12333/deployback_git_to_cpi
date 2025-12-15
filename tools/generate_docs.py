@@ -1,233 +1,182 @@
 #!/usr/bin/env python3
-import sys
-import json
-import requests
-import xml.etree.ElementTree as ET
+import os
+import re
+import argparse
 from pathlib import Path
-import subprocess
+from datetime import datetime
 
-# Updated for high-quality model
-MODEL_NAME = "deepseek-r1:70b"
+from docx import Document
+from docx.shared import Inches, Pt
 
-OLLAMA_GENERATE = "http://localhost:11434/api/generate"
-OLLAMA_EMBEDDINGS = "http://localhost:11434/api/embeddings"
+# ===================== CONFIG =====================
+AUTHOR = "Sindhu"
+VERSION = "Draft"
+DATE = datetime.utcnow().strftime("%Y-%m-%d")
 
+SAP_LOGO = "tools/logos/sap.png"
+MM_LOGO = "tools/logos/motiveminds.png"
 
-# ---------------------------------------------------------
-# Parse .iflw BPMN metadata
-# ---------------------------------------------------------
-def parse_iflw(path):
-    meta = {
-        "flowname": Path(path).stem,
-        "senders": [],
-        "receivers": [],
-        "adapters": [],
-        "scripts": [],
-        "mappings": [],
-        "gateways": [],
-        "subprocesses": [],
-        "servicetasks": [],
-        "callactivities": [],
-        "startevents": [],
-        "endevents": []
-    }
+# ===================== HELPERS =====================
+def sanitize(name):
+    return re.sub(r'[<>:"/\\|?*]', "", name)
 
-    try:
-        tree = ET.parse(path)
-        root = tree.getroot()
+def find_iflows(package_dir):
+    roots = set()
+    for root, _, files in os.walk(package_dir):
+        if any(f.endswith(".iflw") for f in files):
+            roots.add(Path(root))
+    return sorted(roots)
 
-        for elem in root.iter():
-            tag = elem.tag.split("}")[-1]
-            low = tag.lower()
-            name = elem.attrib.get("name") or elem.attrib.get("id") or tag
+def read_files(iflow_dir):
+    text = ""
+    for root, _, files in os.walk(iflow_dir):
+        for f in files:
+            if f.endswith((".iflw", ".groovy", ".xslt")):
+                p = Path(root) / f
+                text += f"\n{p.name}\n"
+    return text.lower()
 
-            if "sender" in low: meta["senders"].append(name)
-            if "receiver" in low: meta["receivers"].append(name)
-            if "adapter" in low: meta["adapters"].append(name)
+# ===================== RULE ENGINE =====================
+def detect_sender_receiver(text):
+    sender = "Unknown Sender"
+    receiver = "Unknown Receiver"
 
-            if "script" in low or "groovy" in low:
-                meta["scripts"].append(name)
+    if "mail" in text:
+        sender = "Mail Adapter"
+    elif "http" in text:
+        sender = "HTTP Adapter"
+    elif "sftp" in text:
+        sender = "SFTP Adapter"
+    elif "idoc" in text:
+        sender = "IDoc Adapter"
 
-            if "mapping" in low:
-                meta["mappings"].append(name)
+    if "receiver" in text or "target" in text:
+        receiver = "Target System"
 
-            if tag == "serviceTask": meta["servicetasks"].append(name)
-            if tag == "callActivity": meta["callactivities"].append(name)
-            if tag in ["exclusiveGateway", "parallelGateway", "inclusiveGateway"]:
-                meta["gateways"].append(name)
-            if tag == "subProcess": meta["subprocesses"].append(name)
-            if tag == "startEvent": meta["startevents"].append(name)
-            if tag == "endEvent": meta["endevents"].append(name)
+    return sender, receiver
 
-    except Exception as e:
-        meta["error"] = f"Parse error: {e}"
+def detect_components(text):
+    comps = []
+    if "groovy" in text:
+        comps.append("Groovy Script")
+    if "xslt" in text or "mapping" in text:
+        comps.append("Message Mapping")
+    if "router" in text:
+        comps.append("Router")
+    if not comps:
+        comps.append("Standard CPI Flow Steps")
+    return comps
 
-    return meta
+# ===================== CONTENT GENERATION =====================
+def build_content(iflow_name, text):
+    sender, receiver = detect_sender_receiver(text)
+    components = detect_components(text)
 
+    content = f"""
+1. Introduction
 
-# ---------------------------------------------------------
-# Mermaid Architecture Diagram
-# ---------------------------------------------------------
-def generate_mermaid(meta):
-    sender = meta["senders"][0] if meta["senders"] else "Sender"
-    receiver = meta["receivers"][0] if meta["receivers"] else "Receiver"
+1.1 Purpose  
+This document describes the SAP CPI integration flow **{iflow_name}**.  
+The iFlow is designed to process incoming messages and route them through SAP CPI for further processing.
 
-    return f"""
-```mermaid
-graph TD
-    {sender} --> CPI
-    CPI --> {receiver}
-```
+1.2 Scope  
+The scope includes message reception, processing, transformation, and forwarding to downstream systems.
+
+2. Integration Overview
+
+2.1 Integration Architecture  
+The integration is implemented in SAP Cloud Integration (CPI).  
+Messages are received via **{sender}**, processed using CPI flow steps, and sent to **{receiver}**.
+
+2.2 Integration Components  
+The following components are used in this integration:
+- Sender Adapter: {sender}
+- Receiver: {receiver}
+- Processing Components: {", ".join(components)}
+
+3. Integration Scenarios
+
+3.1 Scenario Description  
+The iFlow handles inbound messages, validates and processes the payload, and ensures correct delivery to the target system.
+
+3.2 Data Flows  
+Inbound Message → Processing Steps → Transformation → Target System
+
+3.3 Security Requirements  
+Credentials and sensitive information are managed using SAP CPI secure parameters.  
+Authentication is handled at the adapter level.
+
+4. Error Handling and Logging  
+Errors are captured using CPI exception subprocesses.  
+Message logs are enabled for monitoring and troubleshooting.
+
+5. Testing Validation  
+Unit testing and end-to-end testing are performed using test payloads.  
+Message monitoring is used to validate successful processing.
+
+6. Reference Documents  
+SAP CPI Integration Suite Documentation  
+Project-specific integration design documents
 """
+    return content.strip()
 
+# ===================== DOCX =====================
+def write_docx(path, iflow_name, body):
+    doc = Document()
 
-# ---------------------------------------------------------
-# Convert metadata into embedding context
-# ---------------------------------------------------------
-def create_context(metadata):
-    resp = requests.post(
-        OLLAMA_EMBEDDINGS,
-        json={
-            "model": MODEL_NAME,
-            "prompt": json.dumps(metadata)
-        }
-    )
-    resp.raise_for_status()
-    return resp.json().get("embedding", [])
-
-
-# ---------------------------------------------------------
-# Build the main documentation prompt
-# ---------------------------------------------------------
-def build_prompt(meta, diagram):
-
-    return f"""
-You are an SAP CPI documentation expert.
-Metadata is provided in hidden embeddings. DO NOT quote or reveal metadata.
-ONLY generate documentation sections where metadata exists.
-
-Follow EXACTLY this standard document structure:
-
-# Technical Documentation – {meta['flowname']}
-
-## 1. Overview
-(Brief summary using only context.)
-
-## 2. Systems Involved
-### Sender Systems
-(List senders)
-
-### Receiver Systems
-(List receivers)
-
-## 3. Adapters Used
-(List adapters)
-
-## 4. Key Functional Steps
-(Output ONLY relevant subsections)
-
-### 4.1 Initialization
-(Only if start events or initialization logic exists)
-
-### 4.2 Execution Mode / Gateway Logic
-(Only if gateways exist)
-
-### 4.3 Source System Data Retrieval
-(Only if service tasks exist – list them)
-
-### 4.4 Message Preprocessing
-(Only if scripts exist)
-
-### 4.5 Message Splitting and Aggregation
-(Only if call activities or multi-branch workflow exists)
-
-### 4.6 Transformation / Mapping
-(Only if mappings exist)
-
-### 4.7 Outbound Call to Receiver System
-(Only if receiver + adapter exist)
-
-### 4.8 Response Handling
-(Only if subprocess names indicate response handling)
-
-### 4.9 Exception Handling
-(Only if subprocess or gateway indicates error flow)
-
-### 4.10 Flow Finalization
-(Only if end events exist)
-
-## 5. Mapping Logic Summary
-(Only if metadata has mappings)
-
-## 6. Groovy Script Summary
-(Only if scripts exist)
-
-## 7. Error Handling Approach
-(Only if subprocesses or gateways exist)
-
-## 8. High-Level Architecture Diagram (Mermaid)
-{diagram}
-
-## 9. Component Inventory (Extracted)
-(List all detected components)
-"""
-
-
-# ---------------------------------------------------------
-# Generate CPI documentation with 70B model
-# ---------------------------------------------------------
-def call_llm(prompt, meta):
-
-    ctx = create_context(meta)
-
-    resp = requests.post(
-        OLLAMA_GENERATE,
-        json={
-            "model": MODEL_NAME,
-            "prompt": prompt,
-            "context": ctx,
-            "stream": False
-        }
-    )
-    resp.raise_for_status()
-    return resp.json().get("response", "")
-
-
-# ---------------------------------------------------------
-# Write Markdown + DOCX
-# ---------------------------------------------------------
-def write_output(path, markdown):
-
-    out = Path(path).parent / "docs"
-    out.mkdir(parents=True, exist_ok=True)
-
-    md = out / f"{Path(path).stem}_Documentation.md"
-    doc = out / f"{Path(path).stem}_Documentation.docx"
-
-    md.write_text(markdown, encoding="utf-8")
-
+    # Logos
+    table = doc.add_table(1, 2)
     try:
-        subprocess.run(["pandoc", str(md), "-o", str(doc)], check=True)
-    except Exception:
+        table.cell(0, 0).paragraphs[0].add_run().add_picture(SAP_LOGO, width=Inches(1.5))
+        table.cell(0, 1).paragraphs[0].add_run().add_picture(MM_LOGO, width=Inches(1.5))
+    except:
         pass
 
-    print(f"Generated: {md}")
-    print(f"Generated: {doc}")
+    # Title
+    title = doc.add_paragraph(iflow_name)
+    title.alignment = 1
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(26)
 
+    # Meta table
+    meta = doc.add_table(3, 2)
+    meta.style = "Table Grid"
+    meta.cell(0, 0).text = "Author"
+    meta.cell(1, 0).text = "Date"
+    meta.cell(2, 0).text = "Version"
+    meta.cell(0, 1).text = AUTHOR
+    meta.cell(1, 1).text = DATE
+    meta.cell(2, 1).text = VERSION
 
-# ---------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------
+    doc.add_page_break()
+
+    for line in body.split("\n"):
+        doc.add_paragraph(line)
+
+    doc.save(path)
+
+# ===================== MAIN =====================
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--package", required=True)
+    args = parser.parse_args()
+
+    base = Path("cpi-artifacts") / args.package
+    iflows = find_iflows(base)
+
+    for iflow in iflows:
+        name = sanitize(iflow.name)
+        print("Generating documentation for:", name)
+
+        text = read_files(iflow)
+        content = build_content(name, text)
+
+        out = iflow / "docs"
+        out.mkdir(exist_ok=True)
+
+        write_docx(out / f"{name}.docx", name, content)
+
+    print("✔ Documentation generated successfully")
+
 if __name__ == "__main__":
-    for f in sys.argv[1:]:
-        print("Processing:", f)
-
-        meta = parse_iflw(f)
-        diagram = generate_mermaid(meta)
-        prompt = build_prompt(meta, diagram)
-
-        markdown = call_llm(prompt, meta)
-
-        write_output(f, markdown)
-
-    print("Done.")
+    main()
