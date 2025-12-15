@@ -1,4 +1,4 @@
-name: Generate CPI Documentation (Ollama)
+name: Generate CPI Documentation
 
 on:
   workflow_dispatch:
@@ -11,45 +11,22 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Docker (info)
-        run: |
-          echo "Docker version:"
-          docker --version || true
-
-      - name: Pull Ollama Docker image
-        run: |
-          docker pull ollama/ollama:latest
-
-      - name: Run Ollama container (background)
-        run: |
-          # Run container detached, map port 11434
-          docker run --rm -d --name ollama_local -p 11434:11434 ollama/ollama:latest
-          # wait for API to be ready (simple loop)
-          for i in $(seq 1 30); do
-            if curl -sS http://localhost:11434/health >/dev/null 2>&1; then
-              echo "Ollama API ready"
-              break
-            fi
-            echo "Waiting for Ollama... ($i)"
-            sleep 2
-          done
-
-      - name: Pull deepseek-r1 model inside container
-        run: |
-          docker exec ollama_local ollama pull deepseek-r1:7b || docker exec ollama_local ollama pull deepseek-r1
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Install Python deps
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install requests python-docx
@@ -59,11 +36,6 @@ jobs:
           chmod +x tools/run_generate_docs.sh
           ./tools/run_generate_docs.sh "${{ github.event.inputs.package }}"
 
-      - name: Stop Ollama container
-        if: always()
-        run: |
-          docker stop ollama_local || true
-
       - name: Commit generated docs
         run: |
           git config user.name "GitHub Actions"
@@ -72,6 +44,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No docs to commit."
           else
-            git commit -m "Auto-generated docs for ${{ github.event.inputs.package }}"
+            git commit -m "Auto-generated docs"
             git push
           fi
