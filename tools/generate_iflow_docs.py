@@ -131,7 +131,14 @@ def main():
     if not base.exists():
         raise RuntimeError(f"Package not found: {base}")
 
-    iflows = find_iflows(base)
-    if not iflows:
-        print("No iFlows found.")
-        ret
+   iflows = find_iflows(base)
+
+print(f"📦 Package path: {base}")
+print(f"📂 iFlows found: {len(iflows)}")
+
+if not iflows:
+    print("❌ No iFlows found.")
+    return
+
+for f in iflows:
+    print(f"   ➜ {f}")
