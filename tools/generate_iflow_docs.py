@@ -9,7 +9,7 @@ from docx.shared import Inches, Pt
 
 # ================= CONFIG =================
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "deepseek-r1:7b"
+MODEL = "qwen2.5:7b"
 
 AUTHOR = "Sindhu"
 VERSION = "Draft"
