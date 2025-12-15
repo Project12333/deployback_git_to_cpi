@@ -52,50 +52,37 @@ Rules:
 
 # ================= HELPERS =================
 def find_iflows(package_dir: Path):
-    """
-    Finds CPI iFlow directories by locating *.iflw files
-    """
     iflow_dirs = set()
-
     for root, _, files in os.walk(package_dir):
         for f in files:
             if f.endswith(".iflw"):
                 iflow_dirs.add(Path(root))
-
     return sorted(iflow_dirs)
 
 
 def collect_artifacts(iflow_dir: Path):
-    """
-    Collects iFlow XML, Groovy scripts, and mappings
-    """
     content = ""
     for root, _, files in os.walk(iflow_dir):
         for f in files:
             if f.endswith((".iflw", ".groovy", ".xslt", ".xsl")):
                 p = Path(root) / f
                 try:
-                    content += f"\n\n### FILE: {p.name}\n"
+                    content += "\n\n### FILE: " + p.name + "\n"
                     content += p.read_text(encoding="utf-8", errors="ignore")
                 except Exception as e:
-                    print(f"⚠ Could not read {p}: {e}")
+                    print("WARN: Could not read file:", p, e)
     return content
 
 
 def call_ollama(user_prompt: str):
-    """
-    Calls local Ollama using /api/generate
-    """
     payload = {
         "model": MODEL,
         "prompt": SYSTEM_PROMPT + "\n\n" + user_prompt,
         "stream": False,
-        "options": {
-            "temperature": 0.1
-        }
+        "options": {"temperature": 0.1}
     }
 
-    print("🧠 Sending request to Ollama...")
+    print("Sending request to Ollama...")
     resp = requests.post(OLLAMA_URL, json=payload, timeout=600)
     resp.raise_for_status()
     return resp.json()["response"]
@@ -105,7 +92,7 @@ def call_ollama(user_prompt: str):
 def write_docx(doc_path: Path, iflow_name: str, body: str):
     doc = Document()
 
-    # Logos header
+    # Logos
     table = doc.add_table(1, 2)
     try:
         table.cell(0, 0).paragraphs[0].add_run().add_picture(
@@ -115,7 +102,7 @@ def write_docx(doc_path: Path, iflow_name: str, body: str):
             MM_LOGO, width=Inches(1.5)
         )
     except Exception as e:
-        print(f"⚠ Logo load failed: {e}")
+        print("WARN: Logo load failed:", e)
 
     # Title
     title = doc.add_paragraph(iflow_name)
@@ -145,35 +132,31 @@ def write_docx(doc_path: Path, iflow_name: str, body: str):
 # ================= MAIN =================
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--package",
-        required=True,
-        help="CPI package folder under cpi-artifacts/"
-    )
+    parser.add_argument("--package", required=True)
     args = parser.parse_args()
 
     base = Path("cpi-artifacts") / args.package
-    print(f"📦 Package path: {base}")
+    print("Package path:", base)
 
     if not base.exists():
-        print("❌ Package not found")
+        print("ERROR: Package not found")
         return
 
     iflows = find_iflows(base)
-    print(f"📂 iFlows found: {len(iflows)}")
+    print("iFlows found:", len(iflows))
 
     if not iflows:
-        print("❌ No iFlows detected")
+        print("ERROR: No iFlows detected")
         return
 
     for iflow_dir in iflows:
         iflow_name = iflow_dir.name
-        print(f"➡ Processing iFlow: {iflow_name}")
+        print("Processing iFlow:", iflow_name)
 
         artifacts = collect_artifacts(iflow_dir)
-        print(f"📄 Artifact size: {len(artifacts)} characters")
+        print("Artifact size:", len(artifacts))
 
-        prompt = f"iFlow Name: {iflow_name}\n\nArtifacts:\n{artifacts}"
+        prompt = "iFlow Name: " + iflow_name + "\n\nArtifacts:\n" + artifacts
         ai_text = call_ollama(prompt)
 
         docs_dir = iflow_dir / "docs"
@@ -182,9 +165,9 @@ def main():
         doc_path = docs_dir / f"{iflow_name}.docx"
         write_docx(doc_path, iflow_name, ai_text)
 
-        print(f"✔ Document generated: {doc_path}")
+        print("Document generated:", doc_path)
 
-    print("🎉 Documentation generation completed")
+    print("Documentation generation completed successfully")
 
 
 if __name__ == "__main__":
