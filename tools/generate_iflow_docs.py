@@ -124,21 +124,54 @@ def write_docx(path: Path, iflow_name: str, body: str):
 # ================= MAIN =================
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--package", required=True, help="CPI package folder under cpi-artifacts/")
+    parser.add_argument(
+        "--package",
+        required=True,
+        help="CPI package folder under cpi-artifacts/"
+    )
     args = parser.parse_args()
 
     base = Path("cpi-artifacts") / args.package
+
+    print(f"📦 Package path: {base}")
+
     if not base.exists():
-        raise RuntimeError(f"Package not found: {base}")
+        print("❌ Package not found.")
+        return
 
-   iflows = find_iflows(base)
+    iflows = find_iflows(base)
 
-print(f"📦 Package path: {base}")
-print(f"📂 iFlows found: {len(iflows)}")
+    print(f"📂 iFlows found: {len(iflows)}")
 
-if not iflows:
-    print("❌ No iFlows found.")
-    return
+    if not iflows:
+        print("❌ No iFlows found.")
+        return
 
-for f in iflows:
-    print(f"   ➜ {f}")
+    for iflow in iflows:
+        print(f"➡ Generating documentation for iFlow directory:")
+        print(f"   {iflow}")
+
+        artifacts = collect_artifacts(iflow)
+
+        prompt = (
+            f"iFlow Name: {iflow.name}\n\n"
+            f"Artifacts:\n{artifacts}"
+        )
+
+        ai_text = call_ollama(prompt)
+
+        out_dir = iflow / "docs"
+        out_dir.mkdir(exist_ok=True)
+
+        doc_path = out_dir / f"{iflow.name}.docx"
+
+        write_docx(
+            doc_path=doc_path,
+            iflow_name=iflow.name,
+            body=ai_text
+        )
+
+        print(f"✔ Document generated: {doc_path}")
+
+    print("🎉 All documentation generated successfully.")
+
