@@ -1,0 +1,36 @@
+name: Generate CPI Documentation (Self-Hosted AI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Enter CPI Package Folder Name"
+        required: true
+        default: "EmailreceiverxlsxToXML"
+
+jobs:
+  generate-docs:
+    runs-on: [self-hosted, windows]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Python
+        run: |
+          python --version
+
+      - name: Verify Ollama
+        run: |
+          ollama list
+
+      - name: Generate CPI Documentation using Ollama AI
+        run: |
+          python tools\generate_iflow_docs.py --package ${{ github.event.inputs.package }}
+
+      - name: Commit generated docs
+        run: |
+          git status
+          git add cpi-artifacts || exit 0
+          git commit -m "AI-generated CPI documentation for ${{ github.event.inputs.package }}" || echo "Nothing to commit"
+          git push
