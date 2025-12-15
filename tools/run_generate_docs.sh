@@ -14,4 +14,4 @@ echo "Running documentation generator for package: $PACKAGE"
 python -m pip install --upgrade pip
 python -m pip install requests python-docx
 
-python tools/generate_iflow_docs.py --package "$PACKAGE"
+python tools/generate_docs.py --package "$PACKAGE"
