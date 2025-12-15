@@ -54,7 +54,7 @@ Rules:
 def find_iflows(package_dir: Path):
     roots = set()
     for root, _, files in os.walk(package_dir):
-        if any(f.endswith(".iflw") for f in files):
+        if "iFlowContent.xml" in files:
             roots.add(Path(root))
     return sorted(roots)
 
