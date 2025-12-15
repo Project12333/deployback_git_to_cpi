@@ -30,7 +30,13 @@ jobs:
           python tools\generate_iflow_docs.py --package ${{ github.event.inputs.package }}
 
       - name: Commit generated docs
+        shell: powershell
         run: |
-          git add cpi-artifacts || exit 0
-          git commit -m "AI-generated CPI documentation" || echo "Nothing to commit"
-          git push
+          git status
+          git add cpi-artifacts
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "AI-generated CPI documentation"
+            git push
+          } else {
+            Write-Host "No documentation changes to commit."
+          }
