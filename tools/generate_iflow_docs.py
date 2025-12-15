@@ -11,7 +11,7 @@ from docx.shared import Inches, Pt
 
 # ================= CONFIG =================
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "deepseek/deepseek-r1:free"
+MODEL = "deepseek/deepseek-r1"
 
 AUTHOR = "Sindhu"
 VERSION = "Draft"
