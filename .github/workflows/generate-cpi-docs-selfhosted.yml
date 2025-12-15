@@ -16,9 +16,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify Python
+      - name: Install Python dependencies
         run: |
-          python --version
+          python -m pip install --upgrade pip
+          python -m pip install requests python-docx
 
       - name: Verify Ollama
         run: |
@@ -30,7 +31,6 @@ jobs:
 
       - name: Commit generated docs
         run: |
-          git status
           git add cpi-artifacts || exit 0
-          git commit -m "AI-generated CPI documentation for ${{ github.event.inputs.package }}" || echo "Nothing to commit"
+          git commit -m "AI-generated CPI documentation" || echo "Nothing to commit"
           git push
