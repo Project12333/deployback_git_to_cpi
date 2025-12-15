@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 import os
-import re
 import argparse
+import requests
 from pathlib import Path
 from datetime import datetime
-
 from docx import Document
 from docx.shared import Inches, Pt
 
-# ===================== CONFIG =====================
+# ================= CONFIG =================
+OLLAMA_URL = "http://localhost:11434/api/chat"
+MODEL = "deepseek-r1:7b"
+
 AUTHOR = "Sindhu"
 VERSION = "Draft"
 DATE = datetime.utcnow().strftime("%Y-%m-%d")
@@ -16,111 +18,79 @@ DATE = datetime.utcnow().strftime("%Y-%m-%d")
 SAP_LOGO = "tools/logos/sap.png"
 MM_LOGO = "tools/logos/motiveminds.png"
 
-# ===================== HELPERS =====================
-def sanitize(name):
-    return re.sub(r'[<>:"/\\|?*]', "", name)
+SYSTEM_PROMPT = """
+You are a Senior SAP CPI Integration Architect.
 
-def find_iflows(package_dir):
-    roots = set()
-    for root, _, files in os.walk(package_dir):
-        if any(f.endswith(".iflw") for f in files):
-            roots.add(Path(root))
-    return sorted(roots)
+You will be given COMPLETE SAP CPI iFlow artifacts:
+- iFlow XML (.iflw)
+- Groovy scripts
+- Message mappings
 
-def read_files(iflow_dir):
-    text = ""
-    for root, _, files in os.walk(iflow_dir):
-        for f in files:
-            if f.endswith((".iflw", ".groovy", ".xslt")):
-                p = Path(root) / f
-                text += f"\n{p.name}\n"
-    return text.lower()
+Your task:
+Analyze the integration flow in depth and generate a PROFESSIONAL
+SAP CPI Technical Specification using EXACTLY this structure:
 
-# ===================== RULE ENGINE =====================
-def detect_sender_receiver(text):
-    sender = "Unknown Sender"
-    receiver = "Unknown Receiver"
-
-    if "mail" in text:
-        sender = "Mail Adapter"
-    elif "http" in text:
-        sender = "HTTP Adapter"
-    elif "sftp" in text:
-        sender = "SFTP Adapter"
-    elif "idoc" in text:
-        sender = "IDoc Adapter"
-
-    if "receiver" in text or "target" in text:
-        receiver = "Target System"
-
-    return sender, receiver
-
-def detect_components(text):
-    comps = []
-    if "groovy" in text:
-        comps.append("Groovy Script")
-    if "xslt" in text or "mapping" in text:
-        comps.append("Message Mapping")
-    if "router" in text:
-        comps.append("Router")
-    if not comps:
-        comps.append("Standard CPI Flow Steps")
-    return comps
-
-# ===================== CONTENT GENERATION =====================
-def build_content(iflow_name, text):
-    sender, receiver = detect_sender_receiver(text)
-    components = detect_components(text)
-
-    content = f"""
 1. Introduction
-
-1.1 Purpose  
-This document describes the SAP CPI integration flow **{iflow_name}**.  
-The iFlow is designed to process incoming messages and route them through SAP CPI for further processing.
-
-1.2 Scope  
-The scope includes message reception, processing, transformation, and forwarding to downstream systems.
+   1.1 Purpose
+   1.2 Scope
 
 2. Integration Overview
-
-2.1 Integration Architecture  
-The integration is implemented in SAP Cloud Integration (CPI).  
-Messages are received via **{sender}**, processed using CPI flow steps, and sent to **{receiver}**.
-
-2.2 Integration Components  
-The following components are used in this integration:
-- Sender Adapter: {sender}
-- Receiver: {receiver}
-- Processing Components: {", ".join(components)}
+   2.1 Integration Architecture
+   2.2 Integration Components
 
 3. Integration Scenarios
+   3.1 Scenario Description
+   3.2 Data Flows
+   3.3 Security Requirements
 
-3.1 Scenario Description  
-The iFlow handles inbound messages, validates and processes the payload, and ensures correct delivery to the target system.
+4. Error Handling and Logging
 
-3.2 Data Flows  
-Inbound Message → Processing Steps → Transformation → Target System
+5. Testing Validation
 
-3.3 Security Requirements  
-Credentials and sensitive information are managed using SAP CPI secure parameters.  
-Authentication is handled at the adapter level.
+6. Reference Documents
 
-4. Error Handling and Logging  
-Errors are captured using CPI exception subprocesses.  
-Message logs are enabled for monitoring and troubleshooting.
-
-5. Testing Validation  
-Unit testing and end-to-end testing are performed using test payloads.  
-Message monitoring is used to validate successful processing.
-
-6. Reference Documents  
-SAP CPI Integration Suite Documentation  
-Project-specific integration design documents
+Rules:
+- Use ONLY information inferred from the artifacts
+- Do NOT hallucinate systems
+- If something is missing, state assumptions clearly
+- Write clear, enterprise-grade documentation
 """
-    return content.strip()
 
-# ===================== DOCX =====================
+# ================= HELPERS =================
+def find_iflows(pkg):
+    roots = set()
+    for r, _, files in os.walk(pkg):
+        if any(f.endswith(".iflw") for f in files):
+            roots.add(Path(r))
+    return sorted(roots)
+
+def collect_artifacts(iflow_dir):
+    text = ""
+    for r, _, files in os.walk(iflow_dir):
+        for f in files:
+            if f.endswith((".iflw", ".groovy", ".xslt", ".xsl")):
+                p = Path(r) / f
+                try:
+                    text += f"\n\n### FILE: {p.name}\n{p.read_text(errors='ignore')}"
+                except:
+                    pass
+    return text
+
+def call_ollama(prompt):
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.1,
+        "stream": False
+    }
+    r = requests.post(OLLAMA_URL, json=payload, timeout=600)
+    r.raise_for_status()
+    return r.json()["message"]["content"]
+
+# ================= DOCX =================
 def write_docx(path, iflow_name, body):
     doc = Document()
 
@@ -138,7 +108,7 @@ def write_docx(path, iflow_name, body):
     title.runs[0].bold = True
     title.runs[0].font.size = Pt(26)
 
-    # Meta table
+    # Meta
     meta = doc.add_table(3, 2)
     meta.style = "Table Grid"
     meta.cell(0, 0).text = "Author"
@@ -155,7 +125,7 @@ def write_docx(path, iflow_name, body):
 
     doc.save(path)
 
-# ===================== MAIN =====================
+# ================= MAIN =================
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--package", required=True)
@@ -165,18 +135,19 @@ def main():
     iflows = find_iflows(base)
 
     for iflow in iflows:
-        name = sanitize(iflow.name)
-        print("Generating documentation for:", name)
+        name = iflow.name
+        print("Generating AI documentation for:", name)
 
-        text = read_files(iflow)
-        content = build_content(name, text)
+        artifacts = collect_artifacts(iflow)
+        prompt = f"iFlow Name: {name}\n\nArtifacts:\n{artifacts}"
+
+        ai_text = call_ollama(prompt)
 
         out = iflow / "docs"
         out.mkdir(exist_ok=True)
+        write_docx(out / f"{name}.docx", name, ai_text)
 
-        write_docx(out / f"{name}.docx", name, content)
-
-    print("✔ Documentation generated successfully")
+    print("✔ AI Documentation generated successfully")
 
 if __name__ == "__main__":
     main()
