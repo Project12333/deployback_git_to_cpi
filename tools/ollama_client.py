@@ -5,8 +5,8 @@ MODEL = "qwen2.5:7b"
 
 def generate_section(section_title: str, context: str) -> str:
     """
-    Generate MEDIUM-detail SAP CPI documentation text
-    for a single section using Ollama (Qwen).
+    Generates ONE documentation section using Ollama (Qwen).
+    Designed to avoid timeouts by keeping prompts small.
     """
 
     prompt = f"""
@@ -22,9 +22,9 @@ Context:
 
 Rules:
 - Use SAP CPI terminology
-- Professional paragraph style
+- Write in professional paragraph form
 - No markdown
-- No bullet lists unless required
+- No excessive bullet points
 """
 
     payload = {
@@ -33,7 +33,7 @@ Rules:
         "stream": False,
         "options": {
             "temperature": 0.3,
-            "num_predict": 500
+            "num_predict": 300   # 🔑 reduced to prevent timeout
         }
     }
 
@@ -41,9 +41,15 @@ Rules:
         response = requests.post(
             OLLAMA_URL,
             json=payload,
-            timeout=(60, 600)
+            timeout=(60, 600)   # connect, read timeout
         )
         response.raise_for_status()
-        return response.json().get("response", "").strip() or "Content not generated."
+
+        text = response.json().get("response", "").strip()
+        return text if text else "Content could not be generated."
+
+    except requests.exceptions.Timeout:
+        return "⚠ Documentation generation timed out for this section."
+
     except Exception as e:
-        return f"LLM generation failed: {e}"
+        return f"⚠ LLM generation error: {e}"
