@@ -26,10 +26,18 @@ jobs:
         run: |
           python tools/generate_iflow_docs.py --package "${{ github.event.inputs.package }}"
 
-      - name: Commit generated document
+       - name: Commit generated document
+        shell: powershell
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions@github.com"
+
           git add cpi-artifacts/**/docs/*.docx
-          git commit -m "Auto-generate CPI technical documentation" || echo "No changes"
-          git push
+
+          $status = git status --porcelain
+          if ($status) {
+            git commit -m "Auto-generate CPI technical documentation"
+            git push
+          } else {
+            Write-Host "No changes to commit"
+          }
