@@ -12,21 +12,41 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      # -------------------------------------------------
+      # Checkout repository
+      # -------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -------------------------------------------------
+      # Install Python dependencies
+      # -------------------------------------------------
       - name: Install Python dependencies
+        shell: powershell
         run: |
+          pip install --upgrade pip
           pip install requests python-docx
 
-      - name: Verify Ollama is running
-        run: ollama list
+      # -------------------------------------------------
+      # Verify Ollama is running (important)
+      # -------------------------------------------------
+      - name: Verify Ollama
+        shell: powershell
+        run: |
+          ollama list
 
+      # -------------------------------------------------
+      # Generate CPI documentation
+      # -------------------------------------------------
       - name: Generate CPI documentation
+        shell: powershell
         run: |
           python tools/generate_iflow_docs.py --package "${{ github.event.inputs.package }}"
 
-       - name: Commit generated document
+      # -------------------------------------------------
+      # Commit generated document (PowerShell-safe)
+      # -------------------------------------------------
+      - name: Commit generated document
         shell: powershell
         run: |
           git config user.name "github-actions[bot]"
@@ -38,10 +58,6 @@ jobs:
           if ($status) {
             git commit -m "Auto-generate CPI technical documentation"
             git push
-          } else {
-            Write-Host "No changes to commit"
-          }
-
           } else {
             Write-Host "No changes to commit"
           }
