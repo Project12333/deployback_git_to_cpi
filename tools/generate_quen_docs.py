@@ -1,3 +1,5 @@
+print("✅ NEW VERSION LOADED - SECTION WISE LLM")
+
 import os
 import argparse
 from docx import Document
@@ -12,7 +14,6 @@ MOTIVE_LOGO = "tools/logos/motiveminds.png"
 def add_header_with_logos(section):
     header = section.header
     header.is_linked_to_previous = False
-
     table = header.add_table(rows=1, cols=2)
 
     left = table.cell(0, 0).paragraphs[0]
@@ -23,7 +24,7 @@ def add_header_with_logos(section):
     right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     right.add_run().add_picture(MOTIVE_LOGO, width=Inches(1.5))
 
-def add_table_of_contents(doc):
+def add_toc(doc):
     p = doc.add_paragraph()
     r = p.add_run()
 
@@ -38,54 +39,52 @@ def add_table_of_contents(doc):
 
     r._r.extend([begin, instr, end])
 
-def generate_doc(package_name):
-    output_dir = f"cpi-artifacts/{package_name}/docs"
-    os.makedirs(output_dir, exist_ok=True)
+def generate_doc(package):
+    out_dir = f"cpi-artifacts/{package}/docs"
+    os.makedirs(out_dir, exist_ok=True)
 
     doc = Document()
     section = doc.sections[0]
     add_header_with_logos(section)
 
-    # Cover page
-    title = doc.add_heading(
-        "SAP CPI Integration Flow\nTechnical Specification",
-        level=0
-    )
+    # Cover
+    title = doc.add_heading("SAP CPI Integration Technical Specification", 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_page_break()
 
-    # TOC page
+    # TOC
     doc.add_heading("Table of Contents", level=1)
-    add_table_of_contents(doc)
+    add_toc(doc)
     doc.add_page_break()
 
     sections = [
-        ("1. Introduction", "Overview of the SAP CPI integration flow"),
+        ("1. Introduction", "Overview of the integration"),
         ("1.1 Purpose", "Purpose of this integration"),
-        ("1.2 Scope", "Scope and limitations of the integration"),
-        ("2. Integration Overview", "High-level integration overview"),
-        ("2.1 Integration Architecture", "Architecture of the CPI flow"),
-        ("2.2 Integration Components", "Adapters, mappings, and scripts"),
-        ("3. Integration Scenarios", "Business scenarios supported"),
-        ("3.1 Scenario Description", "Detailed scenario explanation"),
-        ("3.2 Data Flows", "Inbound and outbound data flows"),
-        ("3.3 Security Requirements", "Authentication and authorization"),
-        ("4. Error Handling and Logging", "Exception handling and logging"),
-        ("5. Testing Validation", "Testing and validation approach"),
-        ("6. Reference Documents", "Related SAP documentation"),
+        ("1.2 Scope", "Scope of the integration"),
+        ("2. Integration Overview", "High-level overview"),
+        ("2.1 Integration Architecture", "CPI architecture"),
+        ("2.2 Integration Components", "Adapters, mappings, scripts"),
+        ("3. Integration Scenarios", "Business scenarios"),
+        ("3.1 Scenario Description", "Scenario details"),
+        ("3.2 Data Flows", "Inbound and outbound flows"),
+        ("3.3 Security Requirements", "Security mechanisms"),
+        ("4. Error Handling and Logging", "Exception handling"),
+        ("5. Testing Validation", "Testing strategy"),
+        ("6. Reference Documents", "Reference materials"),
     ]
 
     for title, context in sections:
+        print(f"🧠 Generating section: {title}")
         level = 1 if title.count(".") == 1 else 2
         doc.add_heading(title, level=level)
         doc.add_paragraph(generate_section(title, context))
 
-    output_file = f"{output_dir}/{package_name}_Technical_Spec.docx"
-    doc.save(output_file)
-    print(f"Document generated: {output_file}")
+    out_file = f"{out_dir}/{package}_Technical_Spec.docx"
+    doc.save(out_file)
+    print(f"✅ Document generated: {out_file}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate CPI documentation")
-    parser.add_argument("--package", required=True, help="CPI package name")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--package", required=True)
     args = parser.parse_args()
     generate_doc(args.package)
