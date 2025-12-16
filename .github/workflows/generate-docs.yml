@@ -41,3 +41,7 @@ jobs:
           } else {
             Write-Host "No changes to commit"
           }
+
+          } else {
+            Write-Host "No changes to commit"
+          }
