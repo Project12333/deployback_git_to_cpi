@@ -1,31 +1,32 @@
 name: Generate CPI Documentation (LLM)
 
 on:
-  push:
-    paths:
-      - "cpi-artifacts/**"
   workflow_dispatch:
+    inputs:
+      package:
+        description: "Enter CPI Package Name"
+        required: true
 
 jobs:
-  generate-docs:
+  generate:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify Ollama
-        run: ollama list
-
-      - name: Install Python deps
+      - name: Install Python dependencies
         run: |
           pip install requests python-docx
 
-      - name: Generate Docs
-        run: |
-          python tools/generate_iflow_docs.py --package CPIPracticeflows
+      - name: Verify Ollama is running
+        run: ollama list
 
-      - name: Commit generated docs
+      - name: Generate CPI documentation
+        run: |
+          python tools/generate_iflow_docs.py --package "${{ github.event.inputs.package }}"
+
+      - name: Commit generated document
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions@github.com"
