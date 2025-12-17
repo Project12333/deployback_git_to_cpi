@@ -1,153 +1,108 @@
-#!/usr/bin/env python3
 import os
 import argparse
-import requests
-from pathlib import Path
-from datetime import datetime
 from docx import Document
-from docx.shared import Inches, Pt
-
-# ================= CONFIG =================
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "deepseek-r1:7b"
-
-AUTHOR = "Sindhu"
-VERSION = "Draft"
-DATE = datetime.utcnow().strftime("%Y-%m-%d")
+from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement, ns
+from tools.ollama_client import generate_section
 
 SAP_LOGO = "tools/logos/sap.png"
-MM_LOGO = "tools/logos/motiveminds.png"
+MOTIVE_LOGO = "tools/logos/motiveminds.png"
 
-SYSTEM_PROMPT = """
-You are a Senior SAP CPI Integration Architect.
+# -------------------------------------------------
+# Header with logos (ALL pages)
+# -------------------------------------------------
+def add_header_with_logos(section):
+    header = section.header
+    header.is_linked_to_previous = False
 
-You will be given COMPLETE SAP CPI iFlow artifacts:
-- iFlow XML (.iflw)
-- Groovy scripts
-- Message mappings
+    table = header.add_table(rows=1, cols=2)
 
-Your task:
-Analyze the integration flow in depth and generate a PROFESSIONAL
-SAP CPI Technical Specification using EXACTLY this structure:
+    left = table.cell(0, 0).paragraphs[0]
+    left.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    left.add_run().add_picture(SAP_LOGO, width=Inches(1.2))
 
-1. Introduction
-   1.1 Purpose
-   1.2 Scope
+    right = table.cell(0, 1).paragraphs[0]
+    right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    right.add_run().add_picture(MOTIVE_LOGO, width=Inches(1.5))
 
-2. Integration Overview
-   2.1 Integration Architecture
-   2.2 Integration Components
+# -------------------------------------------------
+# Word Table of Contents
+# -------------------------------------------------
+def add_table_of_contents(doc):
+    p = doc.add_paragraph()
+    r = p.add_run()
 
-3. Integration Scenarios
-   3.1 Scenario Description
-   3.2 Data Flows
-   3.3 Security Requirements
+    begin = OxmlElement("w:fldChar")
+    begin.set(ns.qn("w:fldCharType"), "begin")
 
-4. Error Handling and Logging
+    instr = OxmlElement("w:instrText")
+    instr.text = 'TOC \\o "1-3" \\h \\z \\u'
 
-5. Testing Validation
+    end = OxmlElement("w:fldChar")
+    end.set(ns.qn("w:fldCharType"), "end")
 
-6. Reference Documents
+    r._r.extend([begin, instr, end])
 
-Rules:
-- Use ONLY information inferred from the artifacts
-- Do NOT hallucinate systems
-- If something is missing, state assumptions clearly
-- Write clear, enterprise-grade documentation
-"""
+# -------------------------------------------------
+# Main generator
+# -------------------------------------------------
+def generate_doc(package_name):
+    output_dir = f"cpi-artifacts/{package_name}/docs"
+    os.makedirs(output_dir, exist_ok=True)
 
-# ================= HELPERS =================
-def find_iflows(pkg):
-    roots = set()
-    for r, _, files in os.walk(pkg):
-        if any(f.endswith(".iflw") for f in files):
-            roots.add(Path(r))
-    return sorted(roots)
-
-def collect_artifacts(iflow_dir):
-    text = ""
-    for r, _, files in os.walk(iflow_dir):
-        for f in files:
-            if f.endswith((".iflw", ".groovy", ".xslt", ".xsl")):
-                p = Path(r) / f
-                try:
-                    text += f"\n\n### FILE: {p.name}\n{p.read_text(errors='ignore')}"
-                except:
-                    pass
-    return text
-
-def call_ollama(prompt):
-    payload = {
-        "model": MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.1,
-        "stream": False
-    }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=600)
-    r.raise_for_status()
-    return r.json()["message"]["content"]
-
-# ================= DOCX =================
-def write_docx(path, iflow_name, body):
     doc = Document()
+    section = doc.sections[0]
+    add_header_with_logos(section)
 
-    # Logos
-    table = doc.add_table(1, 2)
-    try:
-        table.cell(0, 0).paragraphs[0].add_run().add_picture(SAP_LOGO, width=Inches(1.5))
-        table.cell(0, 1).paragraphs[0].add_run().add_picture(MM_LOGO, width=Inches(1.5))
-    except:
-        pass
-
-    # Title
-    title = doc.add_paragraph(iflow_name)
-    title.alignment = 1
-    title.runs[0].bold = True
-    title.runs[0].font.size = Pt(26)
-
-    # Meta
-    meta = doc.add_table(3, 2)
-    meta.style = "Table Grid"
-    meta.cell(0, 0).text = "Author"
-    meta.cell(1, 0).text = "Date"
-    meta.cell(2, 0).text = "Version"
-    meta.cell(0, 1).text = AUTHOR
-    meta.cell(1, 1).text = DATE
-    meta.cell(2, 1).text = VERSION
-
+    # ---------------- Cover Page ----------------
+    title = doc.add_heading(
+        "SAP CPI Integration Flow\nTechnical Specification",
+        level=0
+    )
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_page_break()
 
-    for line in body.split("\n"):
-        doc.add_paragraph(line)
+    # ---------------- TOC Page ----------------
+    doc.add_heading("Table of Contents", level=1)
+    add_table_of_contents(doc)
+    doc.add_page_break()
 
-    doc.save(path)
+    # ---------------- TOC-driven sections ----------------
+    sections = [
+        ("1. Introduction", "Overview of the SAP CPI integration flow"),
+        ("1.1 Purpose", "Purpose of this integration"),
+        ("1.2 Scope", "Scope and limitations"),
+        ("2. Integration Overview", "High-level overview"),
+        ("2.1 Integration Architecture", "Architecture of the CPI flow"),
+        ("2.2 Integration Components", "Adapters, mappings, scripts"),
+        ("3. Integration Scenarios", "Business scenarios supported"),
+        ("3.1 Scenario Description", "Detailed scenario explanation"),
+        ("3.2 Data Flows", "Inbound and outbound data flows"),
+        ("3.3 Security Requirements", "Authentication and authorization"),
+        ("4. Error Handling and Logging", "Exception handling and logging"),
+        ("5. Testing Validation", "Testing and validation approach"),
+        ("6. Reference Documents", "Related SAP documentation"),
+    ]
 
-# ================= MAIN =================
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--package", required=True)
+    for title, context in sections:
+        print(f"🧠 Generating section: {title}")  # 🔑 progress indicator
+        level = 1 if title.count(".") == 1 else 2
+        doc.add_heading(title, level=level)
+        doc.add_paragraph(generate_section(title, context))
+
+    output_file = f"{output_dir}/{package_name}_Technical_Spec.docx"
+    doc.save(output_file)
+    print(f"✅ Document generated: {output_file}")
+    print("ℹ Open Word → Right-click TOC → Update Field")
+
+# -------------------------------------------------
+# Entry point
+# -------------------------------------------------
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate SAP CPI documentation")
+    parser.add_argument("--package", required=True, help="CPI package name")
     args = parser.parse_args()
 
-    base = Path("cpi-artifacts") / args.package
-    iflows = find_iflows(base)
+    generate_doc(args.package)
 
-    for iflow in iflows:
-        name = iflow.name
-        print("Generating AI documentation for:", name)
-
-        artifacts = collect_artifacts(iflow)
-        prompt = f"iFlow Name: {name}\n\nArtifacts:\n{artifacts}"
-
-        ai_text = call_ollama(prompt)
-
-        out = iflow / "docs"
-        out.mkdir(exist_ok=True)
-        write_docx(out / f"{name}.docx", name, ai_text)
-
-    print("✔ AI Documentation generated successfully")
-
-if __name__ == "__main__":
-    main()
