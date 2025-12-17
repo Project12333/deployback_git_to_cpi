@@ -3,28 +3,32 @@ import requests
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "qwen2.5:7b"
 
+
 def generate_section(section_title: str, context: str) -> str:
     """
-    Generates ONE documentation section using Ollama (Qwen).
-    Designed to avoid timeouts by keeping prompts small.
+    Generate ONE documentation section using Ollama (Qwen).
+    Context is STRICTLY derived from iFlow XML.
     """
 
     prompt = f"""
 You are a senior SAP CPI Technical Architect.
 
-Write a MEDIUM-detail technical documentation section.
+Write a clear and factual technical documentation section.
 
 Section Title:
 {section_title}
 
-Context:
+FACT CONTEXT (derived from iFlow XML):
 {context}
 
-Rules:
+STRICT RULES:
+- Use ONLY the provided context
+- DO NOT assume adapters, systems, or security if not stated
+- If something is missing, explicitly say it is not defined in the iFlow
 - Use SAP CPI terminology
-- Write in professional paragraph form
+- Write professional paragraphs
 - No markdown
-- No excessive bullet points
+- No bullets unless unavoidable
 """
 
     payload = {
@@ -32,8 +36,8 @@ Rules:
         "prompt": prompt.strip(),
         "stream": False,
         "options": {
-            "temperature": 0.3,
-            "num_predict": 300   # 🔑 reduced to prevent timeout
+            "temperature": 0.2,
+            "num_predict": 350
         }
     }
 
@@ -41,15 +45,15 @@ Rules:
         response = requests.post(
             OLLAMA_URL,
             json=payload,
-            timeout=(60, 600)   # connect, read timeout
+            timeout=(60, 600)
         )
         response.raise_for_status()
 
-        text = response.json().get("response", "").strip()
-        return text if text else "Content could not be generated."
+        return response.json().get("response", "").strip() or \
+            "Content could not be generated from the provided iFlow."
 
     except requests.exceptions.Timeout:
-        return "⚠ Documentation generation timed out for this section."
+        return "Documentation generation timed out for this section."
 
     except Exception as e:
-        return f"⚠ LLM generation error: {e}"
+        return f"LLM g
