@@ -1,4 +1,4 @@
-print("✅ NEW VERSION LOADED - SECTION WISE LLM")
+print("✅ NEW VERSION LOADED - SECTION WISE GENERATION")
 
 import os
 import argparse
@@ -11,48 +11,38 @@ from tools.ollama_client import generate_section
 SAP_LOGO = "tools/logos/sap.png"
 MOTIVE_LOGO = "tools/logos/motiveminds.png"
 
-def add_header_with_logos(section):
+def add_header(section):
     header = section.header
     header.is_linked_to_previous = False
     table = header.add_table(rows=1, cols=2)
 
-    left = table.cell(0, 0).paragraphs[0]
-    left.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    left.add_run().add_picture(SAP_LOGO, width=Inches(1.2))
-
-    right = table.cell(0, 1).paragraphs[0]
-    right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    right.add_run().add_picture(MOTIVE_LOGO, width=Inches(1.5))
+    table.cell(0, 0).paragraphs[0].add_run().add_picture(SAP_LOGO, width=Inches(1.2))
+    table.cell(0, 1).paragraphs[0].add_run().add_picture(MOTIVE_LOGO, width=Inches(1.5))
+    table.cell(0, 1).paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
 def add_toc(doc):
     p = doc.add_paragraph()
     r = p.add_run()
-
-    begin = OxmlElement("w:fldChar")
-    begin.set(ns.qn("w:fldCharType"), "begin")
+    r._r.append(OxmlElement("w:fldChar"))
+    r._r[-1].set(ns.qn("w:fldCharType"), "begin")
 
     instr = OxmlElement("w:instrText")
     instr.text = 'TOC \\o "1-3" \\h \\z \\u'
+    r._r.append(instr)
 
-    end = OxmlElement("w:fldChar")
-    end.set(ns.qn("w:fldCharType"), "end")
-
-    r._r.extend([begin, instr, end])
+    r._r.append(OxmlElement("w:fldChar"))
+    r._r[-1].set(ns.qn("w:fldCharType"), "end")
 
 def generate_doc(package):
     out_dir = f"cpi-artifacts/{package}/docs"
     os.makedirs(out_dir, exist_ok=True)
 
     doc = Document()
-    section = doc.sections[0]
-    add_header_with_logos(section)
+    add_header(doc.sections[0])
 
-    # Cover
-    title = doc.add_heading("SAP CPI Integration Technical Specification", 0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_heading("SAP CPI Integration Technical Specification", 0)
     doc.add_page_break()
 
-    # TOC
     doc.add_heading("Table of Contents", level=1)
     add_toc(doc)
     doc.add_page_break()
@@ -76,12 +66,12 @@ def generate_doc(package):
     for title, context in sections:
         print(f"🧠 Generating section: {title}")
         level = 1 if title.count(".") == 1 else 2
-        doc.add_heading(title, level=level)
+        doc.add_heading(title, level)
         doc.add_paragraph(generate_section(title, context))
 
-    out_file = f"{out_dir}/{package}_Technical_Spec.docx"
-    doc.save(out_file)
-    print(f"✅ Document generated: {out_file}")
+    output = f"{out_dir}/{package}_Technical_Spec.docx"
+    doc.save(output)
+    print(f"✅ Document generated: {output}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
