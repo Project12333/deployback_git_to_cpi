@@ -26,42 +26,51 @@ def find_iflow(package):
 
 
 # -------------------------------------------------
-# Extract BPMN behavior
+# Extract REAL iFlow semantics
 # -------------------------------------------------
-def extract_bpmn(iflw_path):
-    nsmap = {"bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL"}
+def extract_iflow_semantics(iflw_path):
+    nsmap = {
+        "bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+        "sap": "http://sap.com/bpmn/extension"
+    }
+
     tree = ET.parse(iflw_path)
     root = tree.getroot()
 
-    result = {
+    data = {
         "flow_name": os.path.splitext(os.path.basename(iflw_path))[0],
-        "collaboration": "Default Collaboration",
-        "participants": [],
-        "steps": []
+        "senders": set(),
+        "receivers": set(),
+        "content_modifiers": [],
+        "scripts": [],
+        "mappings": [],
+        "exception_handling": False
     }
 
-    collab = root.find(".//bpmn:collaboration", nsmap)
-    if collab is not None:
-        result["collaboration"] = collab.attrib.get("name", "Default Collaboration")
-        for p in collab.findall("bpmn:participant", nsmap):
-            result["participants"].append(p.attrib.get("name", "Unnamed Participant"))
+    for elem in root.iter():
+        tag = elem.tag.split("}")[-1]
+        name = elem.attrib.get("name", "").strip()
 
-    process = root.find(".//bpmn:process", nsmap)
-    if process is not None:
-        for elem in process:
-            tag = elem.tag.split("}")[-1]
-            name = elem.attrib.get("name", tag)
+        if tag == "startEvent":
+            data["senders"].add("Message-based Start Event")
 
-            if tag == "startEvent":
-                result["steps"].append("The integration flow starts with a message start event.")
-            elif tag in ["callActivity", "task", "serviceTask"]:
-                result["steps"].append(
-                    f"The activity '{name}' processes or enriches the message."
-                )
-            elif tag == "endEvent":
-                result["steps"].append("The flow ends with an end event after successful processing.")
+        if tag == "endEvent":
+            data["receivers"].add("Receiver Endpoint")
 
-    return result
+        if tag == "serviceTask":
+            impl = elem.attrib.get("{http://sap.com/bpmn/extension}type", "")
+
+            if "ContentModifier" in impl:
+                data["content_modifiers"].append(name or "Content Modifier")
+            elif "Groovy" in impl:
+                data["scripts"].append(name or "Groovy Script")
+            elif "MessageMapping" in impl:
+                data["mappings"].append(name or "Message Mapping")
+
+        if tag == "subProcess" and elem.attrib.get("triggeredByEvent") == "true":
+            data["exception_handling"] = True
+
+    return data
 
 
 # -------------------------------------------------
@@ -70,28 +79,13 @@ def extract_bpmn(iflw_path):
 def add_header(section):
     header = section.header
     header.is_linked_to_previous = False
-    table = header.add_table(rows=1, cols=2, width=Inches(6))
 
+    table = header.add_table(rows=1, cols=2, width=Inches(6))
     table.cell(0, 0).paragraphs[0].add_run().add_picture(SAP_LOGO, width=Inches(1.2))
+
     right = table.cell(0, 1).paragraphs[0]
     right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     right.add_run().add_picture(MOTIVE_LOGO, width=Inches(1.5))
-
-
-def add_toc(doc):
-    p = doc.add_paragraph()
-    r = p.add_run()
-
-    begin = OxmlElement("w:fldChar")
-    begin.set(ns.qn("w:fldCharType"), "begin")
-
-    instr = OxmlElement("w:instrText")
-    instr.text = 'TOC \\o "1-3" \\h \\z \\u'
-
-    end = OxmlElement("w:fldChar")
-    end.set(ns.qn("w:fldCharType"), "end")
-
-    r._r.extend([begin, instr, end])
 
 
 # -------------------------------------------------
@@ -100,10 +94,9 @@ def add_toc(doc):
 def generate_doc(package):
     iflw = find_iflow(package)
     if not iflw:
-        raise Exception("No .iflw file found")
+        raise Exception("No .iflw file found in package")
 
-    bpmn = extract_bpmn(iflw)
-    steps_text = "\n".join(f"- {s}" for s in bpmn["steps"])
+    iflow = extract_iflow_semantics(iflw)
 
     out_dir = f"cpi-artifacts/{package}/docs"
     os.makedirs(out_dir, exist_ok=True)
@@ -111,14 +104,14 @@ def generate_doc(package):
     doc = Document()
     add_header(doc.sections[0])
 
-    # ---------------- PAGE 1: COVER ----------------
-    doc.add_heading(bpmn["flow_name"], 0)
+    # ---------------- COVER PAGE ----------------
+    doc.add_heading(iflow["flow_name"], 0)
     doc.add_paragraph("\nAuthor\nSindhu")
     doc.add_paragraph(f"\nDate\n{date.today()}")
     doc.add_paragraph("\nVersion\nDraft")
     doc.add_page_break()
 
-    # ---------------- PAGE 2: TOC ----------------
+    # ---------------- TOC PAGE ----------------
     doc.add_heading("Table of Contents", level=1)
     doc.add_paragraph(
         "1. Introduction\n"
@@ -137,34 +130,39 @@ def generate_doc(package):
     )
     doc.add_page_break()
 
-    # ---------------- PAGE 3+: CONTENT ----------------
+    # ---------------- CONTENT ----------------
     sections = [
-        ("1.1 Purpose", f"This document provides a technical specification for the SAP CPI integration flow '{bpmn['flow_name']}'."),
-        ("1.2 Scope", "The scope includes internal processing logic, message flow, and operational behavior."),
-        ("2.1 Integration Architecture", f"The iFlow operates in collaboration '{bpmn['collaboration']}' involving participants {', '.join(bpmn['participants'])}."),
-        ("2.2 Integration Components", "The flow consists of start events, processing activities, and end events."),
-        ("3.1 Scenario Description", f"The integration flow executes the following steps:\n{steps_text}"),
-        ("3.2 Data Flows", "Message flows from sender to receiver through the defined processing steps."),
-        ("3.3 Security Requirements", "Security is governed by CPI tenant configuration and adapter-level settings."),
-        ("4. Error Handling and Logging", "Standard SAP CPI monitoring and logging are used."),
-        ("5. Testing Validation", "Testing includes execution validation and monitoring verification."),
-        ("6. Reference Documents", "SAP CPI Integration Suite documentation.")
-    ]
+        ("1.1 Purpose",
+         f"This document describes the SAP Cloud Integration iFlow "
+         f"'{iflow['flow_name']}' based strictly on its design-time configuration."),
 
-    for title, context in sections:
-        doc.add_heading(title, level=2)
-        doc.add_paragraph(generate_section(title, context))
+        ("1.2 Scope",
+         "The scope includes message flow behavior, processing steps, and runtime characteristics "
+         "explicitly modeled in the iFlow."),
 
-    output = f"{out_dir}/{package}_Technical_Spec.docx"
-    doc.save(output)
-    print(f"Document generated: {output}")
+        ("2.1 Integration Architecture",
+         f"Sender: {', '.join(iflow['senders']) or 'Not defined in iFlow'}\n"
+         f"Receiver: {', '.join(iflow['receivers']) or 'Not defined in iFlow'}\n"
+         "Runtime: SAP Cloud Integration tenant"),
 
+        ("2.2 Integration Components",
+         f"Content Modifiers: {', '.join(iflow['content_modifiers']) or 'None'}\n"
+         f"Groovy Scripts: {', '.join(iflow['scripts']) or 'None'}\n"
+         f"Message Mappings: {', '.join(iflow['mappings']) or 'None'}"),
 
-# -------------------------------------------------
-# Entry point
-# -------------------------------------------------
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--package", required=True)
-    args = parser.parse_args()
-    generate_doc(args.package)
+        ("3.1 Scenario Description",
+         "The iFlow processes inbound messages through a linear sequence of steps "
+         "as defined in its BPMN model."),
+
+        ("3.2 Data Flows",
+         "Message flows from the sender through configured processing components "
+         "and is delivered to the receiver endpoint."),
+
+        ("3.3 Security Requirements",
+         "Security settings are defined at adapter level. No explicit security configuration "
+         "is visible within the iFlow design itself."),
+
+        ("4. Error Handling and Logging",
+         "Explicit exception handling is modeled in the iFlow."
+         if iflow["exception_handling"]
+         else "The iFlow relies
