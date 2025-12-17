@@ -14,11 +14,15 @@ MOTIVE_LOGO = "tools/logos/motiveminds.png"
 def add_header(section):
     header = section.header
     header.is_linked_to_previous = False
-    table = header.add_table(rows=1, cols=2)
 
-    table.cell(0, 0).paragraphs[0].add_run().add_picture(SAP_LOGO, width=Inches(1.2))
-    table.cell(0, 1).paragraphs[0].add_run().add_picture(MOTIVE_LOGO, width=Inches(1.5))
-    table.cell(0, 1).paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    table = header.add_table(rows=1, cols=2, width=Inches(6))
+
+    left = table.cell(0, 0).paragraphs[0]
+    left.add_run().add_picture(SAP_LOGO, width=Inches(1.2))
+
+    right = table.cell(0, 1).paragraphs[0]
+    right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    right.add_run().add_picture(MOTIVE_LOGO, width=Inches(1.5))
 
 def add_toc(doc):
     p = doc.add_paragraph()
