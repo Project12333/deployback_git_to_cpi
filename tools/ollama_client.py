@@ -6,34 +6,27 @@ MODEL = "qwen2.5:7b"
 
 def generate_section(section_title: str, context: str) -> str:
     """
-    Generate ONE documentation section using Ollama (Qwen).
-    Context is STRICTLY derived from iFlow XML.
+    Generate one documentation section using Ollama (Qwen).
     """
 
-    prompt = f"""
-You are a senior SAP CPI Technical Architect.
-
-Write a clear and factual technical documentation section.
-
-Section Title:
-{section_title}
-
-FACT CONTEXT (derived from iFlow XML):
-{context}
-
-STRICT RULES:
-- Use ONLY the provided context
-- DO NOT assume adapters, systems, or security if not stated
-- If something is missing, explicitly say it is not defined in the iFlow
-- Use SAP CPI terminology
-- Write professional paragraphs
-- No markdown
-- No bullets unless unavoidable
-"""
+    prompt = (
+        "You are a senior SAP CPI Technical Architect.\n\n"
+        "Write a clear, factual technical documentation section.\n\n"
+        f"Section Title:\n{section_title}\n\n"
+        f"FACT CONTEXT (derived from iFlow XML):\n{context}\n\n"
+        "STRICT RULES:\n"
+        "- Use ONLY the provided context\n"
+        "- DO NOT assume adapters, systems, or security if not stated\n"
+        "- If information is missing, explicitly say it is not defined in the iFlow\n"
+        "- Use SAP CPI terminology\n"
+        "- Write professional paragraphs\n"
+        "- No markdown\n"
+        "- No bullet lists unless unavoidable\n"
+    )
 
     payload = {
         "model": MODEL,
-        "prompt": prompt.strip(),
+        "prompt": prompt,
         "stream": False,
         "options": {
             "temperature": 0.2,
@@ -49,11 +42,11 @@ STRICT RULES:
         )
         response.raise_for_status()
 
-        return response.json().get("response", "").strip() or \
-            "Content could not be generated from the provided iFlow."
+        text = response.json().get("response", "")
+        return text.strip() if text else "Content could not be generated from the iFlow."
 
     except requests.exceptions.Timeout:
         return "Documentation generation timed out for this section."
 
-    except Exception as e:
-        return f"LLM g
+    except Exception as exc:
+        return f"LLM generation error: {exc}"
