@@ -161,8 +161,9 @@ def generate_doc(package):
         ("3.3 Security Requirements",
          "Security settings are defined at adapter level. No explicit security configuration "
          "is visible within the iFlow design itself."),
-
-        ("4. Error Handling and Logging",
-         "Explicit exception handling is modeled in the iFlow."
+        
+        ( "4. Error Handling and Logging",
+        "Explicit exception handling is modeled in the iFlow."
          if iflow["exception_handling"]
-         else "The iFlow relies
+         else "The iFlow relies on standard SAP CPI error handling and monitoring."),
+
