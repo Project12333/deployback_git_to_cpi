@@ -1,4 +1,4 @@
-print("✅ NEW VERSION LOADED - SECTION WISE GENERATION")
+print("NEW VERSION LOADED - SECTION WISE GENERATION")
 
 import os
 import argparse
