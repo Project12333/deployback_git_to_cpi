@@ -68,7 +68,7 @@ def generate_doc(package):
     ]
 
     for title, context in sections:
-        print(f"🧠 Generating section: {title}")
+        print(f"Generating section: {title}")
         level = 1 if title.count(".") == 1 else 2
         doc.add_heading(title, level)
         doc.add_paragraph(generate_section(title, context))
