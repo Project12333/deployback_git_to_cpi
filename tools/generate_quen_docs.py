@@ -75,7 +75,7 @@ def generate_doc(package):
 
     output = f"{out_dir}/{package}_Technical_Spec.docx"
     doc.save(output)
-    print(f"✅ Document generated: {output}")
+    print(f"Document generated: {output}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
