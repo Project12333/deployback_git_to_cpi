@@ -6,7 +6,7 @@ from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, ns
-from tools.ollama_client import generate_section
+from ollama_client import generate_section
 
 SAP_LOGO = "tools/logos/sap.png"
 MOTIVE_LOGO = "tools/logos/motiveminds.png"
