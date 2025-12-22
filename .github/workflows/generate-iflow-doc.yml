@@ -1,0 +1,38 @@
+name: Generate CPI iFlow Documentation
+
+on:
+  push:
+    paths:
+      - "cpi-artifacts/**.iflw"
+
+jobs:
+  generate-doc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Generate documentation
+        env:
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          IFLOW_PATH: cpi-artifacts/YourPackage/YourFlow.iflw
+        run: |
+          python tools/generate_doc.py
+
+      - name: Commit generated docs
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add docs/*.md
+          git commit -m "Auto-generate CPI iFlow documentation" || echo "No changes"
+          git push
