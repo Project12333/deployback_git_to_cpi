@@ -33,8 +33,11 @@ jobs:
           python tools/generate_package_docs.py
 
       - name: Commit generated docs
+        env:
+          PACKAGE_NAME: ${{ inputs.package }}
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add docs/
-          git commit -m "Auto-generate CPI docs for package ${{ inputs.p
+          git commit -m "Auto-generate CPI docs for package ${PACKAGE_NAME}" || echo "No changes"
+          git push
