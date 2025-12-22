@@ -30,7 +30,7 @@ jobs:
           QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
           PACKAGE_NAME: ${{ inputs.package }}
         run: |
-          python tools/generate_package_docs.py
+          python tools/generate_doc.py
 
       - name: Commit generated docs
         env:
