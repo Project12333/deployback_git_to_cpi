@@ -5,6 +5,7 @@ import sys
 import requests
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from docx import Document
 
 # =========================================================
 # Configuration
@@ -25,24 +26,32 @@ if not API_KEY:
 # Helpers
 # =========================================================
 
-def read_iflow_xml(iflow_path: Path) -> str:
-    try:
-        return iflow_path.read_text(encoding="utf-8")
-    except Exception as e:
-        raise RuntimeError(f"Failed to read iFlow file: {e}")
+def list_packages():
+    return [p.name for p in BASE_ARTIFACTS_DIR.iterdir() if p.is_dir()]
 
-def validate_xml(xml_text: str) -> None:
-    try:
-        ET.fromstring(xml_text)
-    except Exception as e:
-        raise RuntimeError(f"Invalid iFlow XML: {e}")
+def ask_package(packages):
+    print("\n📦 Available CPI Packages:\n")
+    for idx, pkg in enumerate(packages, start=1):
+        print(f"{idx}. {pkg}")
+
+    choice = input("\nEnter package number: ").strip()
+
+    if not choice.isdigit() or int(choice) not in range(1, len(packages) + 1):
+        raise ValueError("Invalid package selection")
+
+    return packages[int(choice) - 1]
+
+def read_iflow_xml(iflow_path: Path) -> str:
+    return iflow_path.read_text(encoding="utf-8")
+
+def validate_xml(xml_text: str):
+    ET.fromstring(xml_text)
 
 def build_prompt(iflow_name: str, xml_content: str) -> str:
     return (
         "You are a senior SAP CPI Technical Architect.\n\n"
-        "Analyze the following SAP CPI iFlow XML and generate a professional "
-        "technical documentation in Markdown format.\n\n"
-        "STRICT STRUCTURE (do not add extra sections):\n"
+        "Generate a professional SAP CPI Technical Specification document.\n\n"
+        "STRICT STRUCTURE:\n"
         "1. Introduction\n"
         "   1.1 Purpose\n"
         "   1.2 Scope\n"
@@ -73,41 +82,74 @@ def call_qwen(prompt: str) -> str:
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.2,
-        "max_tokens": 3000
+        "max_tokens": 3500
     }
 
-    response = requests.post(
-        QUBRID_API_URL,
-        headers=headers,
-        json=payload,
-        timeout=120
-    )
+    response = requests.post(QUBRID_API_URL, headers=headers, json=payload, timeout=120)
 
     if response.status_code != 200:
-        raise RuntimeError(
-            f"Qubrid API error {response.status_code}: {response.text}"
-        )
+        raise RuntimeError(response.text)
 
-    data = response.json()
-    return data["choices"][0]["message"]["content"]
+    return response.json()["choices"][0]["message"]["content"]
+
+def save_docx(content: str, output_file: Path):
+    doc = Document()
+    for line in content.split("\n"):
+        doc.add_paragraph(line)
+    doc.save(output_file)
 
 # =========================================================
 # Main
 # =========================================================
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python generate_quen_docs.py <PACKAGE_NAME>")
+    if not BASE_ARTIFACTS_DIR.exists():
+        print("❌ cpi-artifacts folder not found")
         sys.exit(1)
 
-    package_name = sys.argv[1]
+    packages = list_packages()
+
+    if not packages:
+        print("❌ No packages found")
+        sys.exit(1)
+
+    try:
+        package_name = ask_package(packages)
+    except Exception as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
     package_path = BASE_ARTIFACTS_DIR / package_name
-
-    if not package_path.exists():
-        print(f"❌ Package not found: {package_path}")
-        sys.exit(1)
-
     iflow_files = list(package_path.rglob("*.iflw"))
 
     if not iflow_files:
-        print(f"⚠️ No .iflw fi
+        print(f"⚠️ No iFlows found in {package_name}")
+        sys.exit(0)
+
+    output_dir = BASE_DOCS_DIR / package_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n🚀 Generating documentation for package: {package_name}\n")
+
+    for iflow in iflow_files:
+        try:
+            print(f"➡ Processing {iflow.name}")
+
+            xml = read_iflow_xml(iflow)
+            validate_xml(xml)
+
+            prompt = build_prompt(iflow.stem, xml)
+            doc_text = call_qwen(prompt)
+
+            output_file = output_dir / f"{iflow.stem}.docx"
+            save_docx(doc_text, output_file)
+
+            print(f"✅ Generated {output_file}")
+
+        except Exception as e:
+            print(f"❌ Failed {iflow.name}: {e}")
+
+    print("\n🎉 All documents generated successfully")
+
+if __name__ == "__main__":
+    main()
