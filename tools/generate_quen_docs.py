@@ -6,21 +6,24 @@ import requests
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# ===============================
+# =========================================================
 # Configuration
-# ===============================
+# =========================================================
 
 QUBRID_API_URL = "https://api.qubrid.com/v1/chat/completions"
 MODEL_NAME = "qwen-instruct"
 API_KEY = os.getenv("QUBRID_API_KEY")
 
+BASE_ARTIFACTS_DIR = Path("cpi-artifacts")
+BASE_DOCS_DIR = Path("docs")
+
 if not API_KEY:
     print("❌ ERROR: QUBRID_API_KEY environment variable not set")
     sys.exit(1)
 
-# ===============================
+# =========================================================
 # Helpers
-# ===============================
+# =========================================================
 
 def read_iflow_xml(iflow_path: Path) -> str:
     try:
@@ -73,7 +76,12 @@ def call_qwen(prompt: str) -> str:
         "max_tokens": 3000
     }
 
-    response = requests.post(QUBRID_API_URL, headers=headers, json=payload, timeout=120)
+    response = requests.post(
+        QUBRID_API_URL,
+        headers=headers,
+        json=payload,
+        timeout=120
+    )
 
     if response.status_code != 200:
         raise RuntimeError(
@@ -83,39 +91,23 @@ def call_qwen(prompt: str) -> str:
     data = response.json()
     return data["choices"][0]["message"]["content"]
 
-# ===============================
+# =========================================================
 # Main
-# ===============================
+# =========================================================
 
 def main():
     if len(sys.argv) != 2:
-        print("Usage: python generate_quen_docs.py <path_to_iflw>")
+        print("Usage: python generate_quen_docs.py <PACKAGE_NAME>")
         sys.exit(1)
 
-    iflow_path = Path(sys.argv[1])
+    package_name = sys.argv[1]
+    package_path = BASE_ARTIFACTS_DIR / package_name
 
-    if not iflow_path.exists():
-        print(f"❌ iFlow file not found: {iflow_path}")
+    if not package_path.exists():
+        print(f"❌ Package not found: {package_path}")
         sys.exit(1)
 
-    print(f"📄 Reading iFlow: {iflow_path.name}")
+    iflow_files = list(package_path.rglob("*.iflw"))
 
-    xml_content = read_iflow_xml(iflow_path)
-    validate_xml(xml_content)
-
-    prompt = build_prompt(iflow_path.stem, xml_content)
-
-    print("Sending request to Qwen (Qubrid)...")
-    doc_md = call_qwen(prompt)
-
-    output_dir = Path("docs")
-    output_dir.mkdir(exist_ok=True)
-
-    output_file = output_dir / f"{iflow_path.stem}.md"
-    output_file.write_text(doc_md, encoding="utf-8")
-
-    print("Documentation generated successfully")
-    print(f"📄 Output file: {output_file}")
-
-if __name__ == "__main__":
-    main()
+    if not iflow_files:
+        print(f"⚠️ No .iflw fi
