@@ -1,17 +1,37 @@
 import requests
+import json
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "deepseek-r1:7b"
 
-def generate(prompt):
+def call_ollama(prompt):
+    payload = {
+        "model": MODEL,
+        "prompt": prompt,
+        "stream": True,
+        "options": {
+            "temperature": 0.2,
+            "num_ctx": 4096
+        }
+    }
+
     response = requests.post(
         OLLAMA_URL,
-        json={
-            "model": MODEL,
-            "prompt": prompt,
-            "stream": False
-        },
-        timeout=300
+        json=payload,
+        stream=True,
+        timeout=None  # IMPORTANT: prevent timeout
     )
-    response.raise_for_status()
-    return response.json()["response"]
+
+    full_text = ""
+
+    for line in response.iter_lines():
+        if not line:
+            continue
+
+        data = json.loads(line.decode("utf-8"))
+        full_text += data.get("response", "")
+
+        if data.get("done"):
+            break
+
+    return full_text
