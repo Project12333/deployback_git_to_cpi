@@ -1,7 +1,12 @@
-name: Generate CPI Docs
+name: Generate CPI Docs (By Package)
 
 on:
   workflow_dispatch:
+    inputs:
+      package:
+        description: "CPI Package folder name (inside cpi-artifacts)"
+        required: true
+        type: string
 
 jobs:
   docs:
@@ -10,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           pip install requests python-docx
 
@@ -18,14 +23,14 @@ jobs:
         run: |
           curl http://localhost:11434/api/tags
 
-      - name: Generate documentation
+      - name: Generate docs for selected package
         run: |
-          python tools/generate_iflow_docs.py
+          python tools/generate_iflow_docs.py "${{ inputs.package }}"
 
-      - name: Commit docs
+      - name: Commit generated docs
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add generated-docs || echo "Nothing to add"
-          git commit -m "Auto-generate CPI documentation" || echo "No changes"
+          git commit -m "Generate CPI docs for package ${{ inputs.package }}" || echo "No changes"
           git push
