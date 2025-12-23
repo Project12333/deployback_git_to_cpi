@@ -1,174 +1,74 @@
-#!/usr/bin/env python3
-import os
-import argparse
-import requests
 from pathlib import Path
-from datetime import datetime, timezone
 from docx import Document
-from docx.shared import Inches, Pt
+from docx.shared import Inches
+import xml.etree.ElementTree as ET
+from ollama_client import generate
 
-# ================= CONFIG =================
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "qwen2.5:7b"
+ROOT = Path(__file__).parent
+LOGOS = ROOT / "logos"
+OUTPUT = Path("generated-docs")
+OUTPUT.mkdir(exist_ok=True)
 
-AUTHOR = "Sindhu"
-VERSION = "Draft"
-DATE = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def add_header(doc):
+    header = doc.sections[0].header
+    table = header.add_table(rows=1, cols=2)
+    table.autofit = False
 
-SAP_LOGO = "tools/logos/sap.png"
-MM_LOGO = "tools/logos/motiveminds.png"
+    left = table.cell(0, 0).paragraphs[0]
+    left.add_run().add_picture(str(LOGOS / "sap.png"), width=Inches(1.2))
 
-SYSTEM_PROMPT = """
-You are a Senior SAP CPI Integration Architect.
+    right = table.cell(0, 1).paragraphs[0]
+    right.alignment = 2
+    right.add_run().add_picture(str(LOGOS / "motiveminds.png"), width=Inches(1.5))
 
-Analyze the provided SAP CPI iFlow artifacts (iFlow XML, Groovy scripts, mappings).
-Generate a PROFESSIONAL SAP CPI Technical Specification using EXACTLY this structure:
+def parse_iflow(path):
+    tree = ET.parse(path)
+    root = tree.getroot()
+    names = set()
+
+    for e in root.iter():
+        if "name" in e.attrib:
+            names.add(e.attrib["name"])
+
+    return {
+        "flow": path.stem,
+        "components": ", ".join(names)
+    }
+
+def prompt(meta):
+    return f"""
+Generate SAP CPI Technical Documentation with the following structure:
 
 1. Introduction
    1.1 Purpose
    1.2 Scope
-
 2. Integration Overview
-   2.1 Integration Architecture
-   2.2 Integration Components
-
+   2.1 Architecture
+   2.2 Components
 3. Integration Scenarios
-   3.1 Scenario Description
-   3.2 Data Flows
-   3.3 Security Requirements
-
-4. Error Handling and Logging
-
-5. Testing Validation
-
+4. Error Handling
+5. Testing
 6. Reference Documents
 
-Rules:
-- Use only information inferred from the artifacts
-- If details are missing, state assumptions clearly
-- Do NOT invent systems
-- Use enterprise-quality language
+Integration Flow Name: {meta['flow']}
+Components: {meta['components']}
 """
 
-# ================= HELPERS =================
-def find_iflows(package_dir: Path):
-    iflow_dirs = set()
-    for root, _, files in os.walk(package_dir):
-        for f in files:
-            if f.endswith(".iflw"):
-                iflow_dirs.add(Path(root))
-    return sorted(iflow_dirs)
+def generate_doc(iflw):
+    meta = parse_iflow(iflw)
+    content = generate(prompt(meta))
 
-
-def collect_artifacts(iflow_dir: Path):
-    content = ""
-    for root, _, files in os.walk(iflow_dir):
-        for f in files:
-            if f.endswith((".iflw", ".groovy", ".xslt", ".xsl")):
-                p = Path(root) / f
-                try:
-                    content += "\n\n### FILE: " + p.name + "\n"
-                    content += p.read_text(encoding="utf-8", errors="ignore")
-                except Exception as e:
-                    print("WARN: Could not read file:", p, e)
-    return content
-
-
-def call_ollama(user_prompt: str):
-    payload = {
-        "model": MODEL,
-        "prompt": SYSTEM_PROMPT + "\n\n" + user_prompt,
-        "stream": False,
-        "options": {"temperature": 0.1}
-    }
-
-    print("Sending request to Ollama...")
-    resp = requests.post(OLLAMA_URL, json=payload, timeout=600)
-    resp.raise_for_status()
-    return resp.json()["response"]
-
-
-# ================= DOCX =================
-def write_docx(doc_path: Path, iflow_name: str, body: str):
     doc = Document()
+    add_header(doc)
+    doc.add_heading(meta["flow"], level=1)
 
-    # Logos
-    table = doc.add_table(1, 2)
-    try:
-        table.cell(0, 0).paragraphs[0].add_run().add_picture(
-            SAP_LOGO, width=Inches(1.5)
-        )
-        table.cell(0, 1).paragraphs[0].add_run().add_picture(
-            MM_LOGO, width=Inches(1.5)
-        )
-    except Exception as e:
-        print("WARN: Logo load failed:", e)
-
-    # Title
-    title = doc.add_paragraph(iflow_name)
-    title.alignment = 1
-    run = title.runs[0]
-    run.bold = True
-    run.font.size = Pt(26)
-
-    # Metadata
-    meta = doc.add_table(3, 2)
-    meta.style = "Table Grid"
-    meta.cell(0, 0).text = "Author"
-    meta.cell(1, 0).text = "Date"
-    meta.cell(2, 0).text = "Version"
-    meta.cell(0, 1).text = AUTHOR
-    meta.cell(1, 1).text = DATE
-    meta.cell(2, 1).text = VERSION
-
-    doc.add_page_break()
-
-    for line in body.split("\n"):
+    for line in content.split("\n"):
         doc.add_paragraph(line)
 
-    doc.save(doc_path)
-
-
-# ================= MAIN =================
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--package", required=True)
-    args = parser.parse_args()
-
-    base = Path("cpi-artifacts") / args.package
-    print("Package path:", base)
-
-    if not base.exists():
-        print("ERROR: Package not found")
-        return
-
-    iflows = find_iflows(base)
-    print("iFlows found:", len(iflows))
-
-    if not iflows:
-        print("ERROR: No iFlows detected")
-        return
-
-    for iflow_dir in iflows:
-        iflow_name = iflow_dir.name
-        print("Processing iFlow:", iflow_name)
-
-        artifacts = collect_artifacts(iflow_dir)
-        print("Artifact size:", len(artifacts))
-
-        prompt = "iFlow Name: " + iflow_name + "\n\nArtifacts:\n" + artifacts
-        ai_text = call_ollama(prompt)
-
-        docs_dir = iflow_dir / "docs"
-        docs_dir.mkdir(exist_ok=True)
-
-        doc_path = docs_dir / f"{iflow_name}.docx"
-        write_docx(doc_path, iflow_name, ai_text)
-
-        print("Document generated:", doc_path)
-
-    print("Documentation generation completed successfully")
-
+    out = OUTPUT / f"{meta['flow']}.docx"
+    doc.save(out)
+    print(f"Generated {out}")
 
 if __name__ == "__main__":
-    main()
+    for f in Path("cpi-artifacts").rglob("*.iflw"):
+        generate_doc(f)
