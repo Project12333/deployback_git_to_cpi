@@ -1,43 +1,65 @@
+import sys
 from pathlib import Path
 from docx import Document
 from docx.shared import Inches
 import xml.etree.ElementTree as ET
 from ollama_client import generate
 
-ROOT = Path(__file__).parent
-LOGOS = ROOT / "logos"
-OUTPUT = Path("generated-docs")
-OUTPUT.mkdir(exist_ok=True)
+# -----------------------------
+# Validate input
+# -----------------------------
+if len(sys.argv) < 2:
+    print("❌ Package name not provided")
+    print("Usage: python generate_iflow_docs.py <PACKAGE_NAME>")
+    sys.exit(1)
 
+PACKAGE_NAME = sys.argv[1]
+
+ROOT = Path("cpi-artifacts") / PACKAGE_NAME
+if not ROOT.exists():
+    print(f"❌ Package '{PACKAGE_NAME}' not found under cpi-artifacts/")
+    sys.exit(1)
+
+LOGOS = Path("tools/logos")
+OUTPUT = Path("generated-docs") / PACKAGE_NAME
+OUTPUT.mkdir(parents=True, exist_ok=True)
+
+# -----------------------------
+# Helpers
+# -----------------------------
 def add_header(doc):
     header = doc.sections[0].header
     table = header.add_table(rows=1, cols=2)
     table.autofit = False
 
-    left = table.cell(0, 0).paragraphs[0]
-    left.add_run().add_picture(str(LOGOS / "sap.png"), width=Inches(1.2))
+    table.cell(0, 0).paragraphs[0] \
+        .add_run() \
+        .add_picture(str(LOGOS / "sap.png"), width=Inches(1.2))
 
     right = table.cell(0, 1).paragraphs[0]
     right.alignment = 2
-    right.add_run().add_picture(str(LOGOS / "motiveminds.png"), width=Inches(1.5))
+    right.add_run() \
+        .add_picture(str(LOGOS / "motiveminds.png"), width=Inches(1.5))
 
-def parse_iflow(path):
-    tree = ET.parse(path)
+def parse_iflow(iflw_path):
+    tree = ET.parse(iflw_path)
     root = tree.getroot()
-    names = set()
 
+    components = set()
     for e in root.iter():
         if "name" in e.attrib:
-            names.add(e.attrib["name"])
+            components.add(e.attrib["name"])
 
     return {
-        "flow": path.stem,
-        "components": ", ".join(names)
+        "flow": iflw_path.stem,
+        "components": ", ".join(components)
     }
 
-def prompt(meta):
+def build_prompt(meta):
     return f"""
-Generate SAP CPI Technical Documentation with the following structure:
+You are an SAP CPI Technical Architect.
+
+Generate SAP CPI Technical Documentation with this structure:
 
 1. Introduction
    1.1 Purpose
@@ -46,17 +68,27 @@ Generate SAP CPI Technical Documentation with the following structure:
    2.1 Architecture
    2.2 Components
 3. Integration Scenarios
-4. Error Handling
-5. Testing
+4. Error Handling and Logging
+5. Testing Validation
 6. Reference Documents
 
 Integration Flow Name: {meta['flow']}
+Integration Package: {PACKAGE_NAME}
 Components: {meta['components']}
 """
 
-def generate_doc(iflw):
+# -----------------------------
+# Main execution
+# -----------------------------
+iflows = list(ROOT.rglob("*.iflw"))
+
+if not iflows:
+    print(f"⚠ No iFlows found in package {PACKAGE_NAME}")
+    sys.exit(0)
+
+for iflw in iflows:
     meta = parse_iflow(iflw)
-    content = generate(prompt(meta))
+    content = generate(build_prompt(meta))
 
     doc = Document()
     add_header(doc)
@@ -67,8 +99,5 @@ def generate_doc(iflw):
 
     out = OUTPUT / f"{meta['flow']}.docx"
     doc.save(out)
-    print(f"Generated {out}")
 
-if __name__ == "__main__":
-    for f in Path("cpi-artifacts").rglob("*.iflw"):
-        generate_doc(f)
+    print(f"✅ Generated {out}")
