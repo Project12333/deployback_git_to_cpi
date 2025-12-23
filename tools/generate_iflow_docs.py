@@ -160,7 +160,7 @@ def clean_text(text: str):
 # -------------------------------------------------
 # Main
 # -------------------------------------------------
-iflows = list(PACKAGE_DIR.rglob("*.iflw"))
+iflows = list(PACKAGE_DIR.rglob("**/*.iflw"))
 
 for iflw in iflows:
     meta = parse_iflow(iflw)
