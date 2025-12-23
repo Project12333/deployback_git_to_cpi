@@ -1,89 +1,136 @@
-import sys
+import argparse
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from docx import Document
 from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
 from ollama_client import call_ollama
 
-# -----------------------------
-# Validate input
-# -----------------------------
-if len(sys.argv) < 2:
-    print("❌ Usage: python generate_iflow_docs.py <PACKAGE_NAME>")
-    sys.exit(1)
+# -------------------------------------------------
+# Argument parsing
+# -------------------------------------------------
+parser = argparse.ArgumentParser(description="Generate SAP CPI iFlow documentation")
+parser.add_argument(
+    "--package",
+    required=True,
+    help="CPI package folder name inside cpi-artifacts"
+)
+args = parser.parse_args()
+PACKAGE = args.package
 
-PACKAGE = sys.argv[1]
+# -------------------------------------------------
+# Paths
+# -------------------------------------------------
 PACKAGE_DIR = Path("cpi-artifacts") / PACKAGE
-
 if not PACKAGE_DIR.exists():
-    print(f"❌ Package '{PACKAGE}' not found")
-    sys.exit(1)
+    raise SystemExit(f"❌ Package '{PACKAGE}' not found under cpi-artifacts/")
 
 OUTPUT_DIR = Path("generated-docs") / PACKAGE
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-LOGOS = Path("tools/logos")
+LOGOS_DIR = Path("tools/logos")
 
-# -----------------------------
-def add_header(doc):
-    header = doc.sections[0].header
-    table = header.add_table(1, 2)
+# -------------------------------------------------
+# Word helpers
+# -------------------------------------------------
+def add_header(doc: Document):
+    section = doc.sections[0]
+    section.different_first_page_header_footer = False
 
-    table.cell(0, 0).paragraphs[0] \
-        .add_run() \
-        .add_picture(str(LOGOS / "sap.png"), width=Inches(1.2))
+    header = section.header
+    header.paragraphs.clear()
+
+    table = header.add_table(rows=1, cols=2)
+    table.autofit = False
+
+    left = table.cell(0, 0).paragraphs[0]
+    left.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    left.add_run().add_picture(
+        str(LOGOS_DIR / "sap.png"),
+        width=Inches(1.2)
+    )
 
     right = table.cell(0, 1).paragraphs[0]
-    right.alignment = 2
-    right.add_run() \
-        .add_picture(str(LOGOS / "motiveminds.png"), width=Inches(1.5))
+    right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    right.add_run().add_picture(
+        str(LOGOS_DIR / "motiveminds.png"),
+        width=Inches(1.5)
+    )
 
-def parse_iflow(iflw):
-    tree = ET.parse(iflw)
+# -------------------------------------------------
+# CPI parsing
+# -------------------------------------------------
+def parse_iflow(iflw_path: Path):
+    tree = ET.parse(iflw_path)
     root = tree.getroot()
-    comps = set()
 
-    for e in root.iter():
-        if "name" in e.attrib:
-            comps.add(e.attrib["name"])
+    components = set()
+    for elem in root.iter():
+        if "name" in elem.attrib:
+            components.add(elem.attrib["name"])
 
     return {
-        "flow": iflw.stem,
-        "components": ", ".join(comps)
+        "flow_name": iflw_path.stem,
+        "components": ", ".join(sorted(components))
     }
 
-def build_prompt(meta):
+def build_prompt(meta: dict) -> str:
     return f"""
-You are an SAP CPI Technical Architect.
+You are a senior SAP CPI Technical Architect.
 
-Create a SAP CPI Technical Specification with:
-1. Introduction (Purpose, Scope)
-2. Integration Overview (Architecture, Components)
+Generate a professional SAP CPI Technical Specification with the structure:
+
+1. Introduction
+   1.1 Purpose
+   1.2 Scope
+
+2. Integration Overview
+   2.1 Integration Architecture
+   2.2 Integration Components
+
 3. Integration Scenarios
+   3.1 Scenario Description
+   3.2 Data Flow
+   3.3 Security Requirements
+
 4. Error Handling and Logging
-5. Testing Validation
+5. Testing and Validation
 6. Reference Documents
 
-Package: {PACKAGE}
-Integration Flow: {meta['flow']}
+Package Name: {PACKAGE}
+Integration Flow Name: {meta['flow_name']}
 Components: {meta['components']}
+
+Use concise, enterprise-grade language.
 """
 
-# -----------------------------
-# Main
-# -----------------------------
-for iflw in PACKAGE_DIR.rglob("*.iflw"):
+# -------------------------------------------------
+# Main execution
+# -------------------------------------------------
+iflows = list(PACKAGE_DIR.rglob("*.iflw"))
+print(f"Package path: {PACKAGE_DIR}")
+print(f"iFlows found: {len(iflows)}")
+
+if not iflows:
+    raise SystemExit("⚠ No iFlows found")
+
+for iflw in iflows:
+    print(f"Processing iFlow: {iflw.stem}")
+
     meta = parse_iflow(iflw)
-    content = call_ollama(build_prompt(meta))
+    print("Sending request to Ollama...")
+
+    ai_text = call_ollama(build_prompt(meta))
 
     doc = Document()
     add_header(doc)
-    doc.add_heading(meta["flow"], level=1)
+    doc.add_heading(meta["flow_name"], level=1)
 
-    for line in content.split("\n"):
+    for line in ai_text.split("\n"):
         doc.add_paragraph(line)
 
-    out = OUTPUT_DIR / f"{meta['flow']}.docx"
-    doc.save(out)
+    output_file = OUTPUT_DIR / f"{meta['flow_name']}.docx"
+    doc.save(output_file)
 
-    print(f"✅ Generated {out}")
+    print(f"✅ Generated: {output_file}")
