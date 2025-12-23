@@ -182,3 +182,4 @@ for iflw in iflows:
 
     output = OUTPUT_DIR / f"{meta['flow_name']}.docx"
     doc.save(output)
+    print(f"✅ Generated: {output}")
