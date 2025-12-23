@@ -1,0 +1,26 @@
+name: Generate CPI iFlow Docs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Generate iFlow documentation
+        env:
+          QUBRID_API_KEY: ${{ secrets.QUBRID_API_KEY }}
+        run: |
+          python generate_quen_docs.py cpi-artifacts/MyPackage/MyFlow.iflw
