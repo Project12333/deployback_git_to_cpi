@@ -4,12 +4,17 @@ import requests
 from pathlib import Path
 from parse_iflow import parse_iflow
 
-QWEN_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
-QWEN_API_KEY = os.environ["QWEN_API_KEY"]
-
+# ---------------- CONFIG ----------------
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 PACKAGE_NAME = os.environ.get("PACKAGE_NAME")
+
+if not DEEPSEEK_API_KEY:
+    raise Exception("DEEPSEEK_API_KEY environment variable not set")
+
 if not PACKAGE_NAME:
     raise Exception("PACKAGE_NAME environment variable not set")
+
+API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 BASE_DIR = Path("cpi-artifacts") / PACKAGE_NAME
 OUTPUT_DIR = Path("docs") / PACKAGE_NAME
@@ -19,11 +24,12 @@ if not BASE_DIR.exists():
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# ---------------- PROMPT ----------------
 def build_prompt(meta):
     return f"""
 You are a senior SAP CPI Technical Architect.
 
-Using ONLY the following extracted metadata:
+Using ONLY the following extracted metadata from an SAP CPI iFlow:
 {json.dumps(meta, indent=2)}
 
 Generate a Markdown document with EXACTLY this structure:
@@ -48,28 +54,33 @@ Generate a Markdown document with EXACTLY this structure:
 # 6. Reference Documents
 
 Rules:
-- Do NOT invent systems or adapters
-- If information is missing, say "Not configured in this iFlow"
-- Use professional SAP CPI language
+- Do NOT invent systems, adapters, or security mechanisms
+- If information is missing, write: "Not configured in this iFlow"
+- Use professional SAP CPI terminology
 - Output Markdown only
 """
 
-def call_qwen(prompt):
+# ---------------- LLM CALL ----------------
+def call_deepseek(prompt):
     payload = {
-        "model": "qwen-plus", 
-        "input": {"prompt": prompt}
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2
     }
 
     headers = {
-        "Authorization": f"Bearer {QWEN_API_KEY}",
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    r = requests.post(QWEN_API_URL, headers=headers, json=payload)
+    r = requests.post(API_URL, headers=headers, json=payload)
     r.raise_for_status()
-    return r.json()["output"]["text"]
 
-# -------- MAIN --------
+    return r.json()["choices"][0]["message"]["content"]
+
+# ---------------- MAIN ----------------
 iflow_files = list(BASE_DIR.rglob("*.iflw"))
 
 if not iflow_files:
@@ -79,7 +90,7 @@ for iflow in iflow_files:
     print(f"Processing iFlow: {iflow}")
 
     meta = parse_iflow(iflow)
-    doc = call_qwen(build_prompt(meta))
+    doc = call_deepseek(build_prompt(meta))
 
     out_file = OUTPUT_DIR / f"{meta['name']}.md"
     with open(out_file, "w", encoding="utf-8") as f:
