@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from datetime import date
@@ -13,29 +14,35 @@ from ollama_client import call_ollama
 # Argument parsing
 # -------------------------------------------------
 parser = argparse.ArgumentParser(description="Generate SAP CPI iFlow documentation")
-parser.add_argument("--package", required=True)
-parser.add_argument("--author", default="Sindhu")
+parser.add_argument("--package", required=True, help="CPI package name under cpi-artifacts")
+parser.add_argument("--author", default="Sindhu", help="Author name")
 args = parser.parse_args()
 
 PACKAGE = args.package
 AUTHOR = args.author
 
+print("🚀 Script started")
+
 # -------------------------------------------------
 # Paths
 # -------------------------------------------------
-PACKAGE_DIR = Path("cpi-artifacts") / PACKAGE
-if not PACKAGE_DIR.exists():
-    raise SystemExit(f"❌ Package '{PACKAGE}' not found")
+BASE_DIR = Path.cwd()
+PACKAGE_DIR = BASE_DIR / "cpi-artifacts" / PACKAGE
 
-OUTPUT_DIR = Path("generated-docs") / PACKAGE
+print("📦 Package path:", PACKAGE_DIR.resolve())
+
+if not PACKAGE_DIR.exists():
+    raise SystemExit(f"❌ Package '{PACKAGE}' not found under cpi-artifacts")
+
+OUTPUT_DIR = BASE_DIR / "generated-docs" / PACKAGE
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-LOGOS_DIR = Path("tools/logos")
+LOGOS_DIR = BASE_DIR / "tools" / "logos"
 SAP_LOGO = LOGOS_DIR / "sap.png"
 MM_LOGO = LOGOS_DIR / "motiveminds.png"
 
 # -------------------------------------------------
-# Header (logos)
+# Header with logos
 # -------------------------------------------------
 def add_header(doc: Document):
     header = doc.sections[0].header
@@ -43,6 +50,7 @@ def add_header(doc: Document):
     table.autofit = False
 
     left = table.cell(0, 0).paragraphs[0]
+    left.alignment = WD_ALIGN_PARAGRAPH.LEFT
     left.add_run().add_picture(str(SAP_LOGO), width=Inches(1.2))
 
     right = table.cell(0, 1).paragraphs[0]
@@ -75,7 +83,7 @@ def add_cover_page(doc: Document, flow_name: str):
 def add_table_of_contents(doc: Document):
     doc.add_heading("Table of Contents", level=1)
 
-    toc = [
+    toc_lines = [
         "1. Introduction",
         "   1.1 Purpose",
         "   1.2 Scope",
@@ -94,35 +102,36 @@ def add_table_of_contents(doc: Document):
         "6. Reference Documents",
     ]
 
-    for line in toc:
+    for line in toc_lines:
         doc.add_paragraph(line)
 
     doc.add_page_break()
 
 # -------------------------------------------------
-# CPI parsing
+# Parse iFlow XML
 # -------------------------------------------------
 def parse_iflow(iflw_path: Path):
     components = set()
+
     try:
         root = ET.parse(iflw_path).getroot()
-        for e in root.iter():
-            if "name" in e.attrib:
-                components.add(e.attrib["name"])
-    except Exception:
-        pass
+        for elem in root.iter():
+            if "name" in elem.attrib:
+                components.add(elem.attrib["name"])
+    except Exception as e:
+        print("⚠ XML parse error:", e)
 
     return {
         "flow_name": iflw_path.stem,
-        "components": ", ".join(sorted(components))
+        "components": ", ".join(sorted(components)) if components else "Not detected"
     }
 
 # -------------------------------------------------
-# Prompt
+# Build Ollama prompt
 # -------------------------------------------------
 def build_prompt(meta: dict) -> str:
     return f"""
-Generate ONLY the section content text.
+Generate ONLY the section content.
 DO NOT use Markdown (#, ##, ###).
 DO NOT generate title page or table of contents.
 
@@ -141,29 +150,46 @@ Sections:
 5. Testing Validation
 6. Reference Documents
 
-Package: {PACKAGE}
-Flow: {meta['flow_name']}
+Package Name: {PACKAGE}
+Integration Flow Name: {meta['flow_name']}
 Components: {meta['components']}
 """
 
 # -------------------------------------------------
-# Clean AI output
+# Clean LLM output
 # -------------------------------------------------
 def clean_text(text: str):
-    lines = []
-    for l in text.splitlines():
-        l = l.replace("#", "").strip()
-        if l:
-            lines.append(l)
-    return lines
+    cleaned = []
+    for line in text.splitlines():
+        line = line.replace("#", "").strip()
+        if line:
+            cleaned.append(line)
+    return cleaned
 
 # -------------------------------------------------
-# Main
+# Discover iFlows (WINDOWS-SAFE)
 # -------------------------------------------------
-iflows = list(PACKAGE_DIR.rglob("**/*.iflw"))
+iflows = []
 
+for root, dirs, files in os.walk(PACKAGE_DIR):
+    for f in files:
+        if f.lower().endswith(".iflw"):
+            iflows.append(Path(root) / f)
+
+print(f"🔍 iFlows found: {len(iflows)}")
+
+if not iflows:
+    raise SystemExit("⚠ No .iflw files found – Ollama will not be called")
+
+# -------------------------------------------------
+# Main execution
+# -------------------------------------------------
 for iflw in iflows:
+    print(f"\n➡ Processing iFlow: {iflw.stem}")
+
     meta = parse_iflow(iflw)
+
+    print("🤖 Sending request to Ollama (DeepSeek)...")
     ai_text = call_ollama(build_prompt(meta))
     lines = clean_text(ai_text)
 
@@ -180,6 +206,9 @@ for iflw in iflows:
         else:
             doc.add_paragraph(line)
 
-    output = OUTPUT_DIR / f"{meta['flow_name']}.docx"
-    doc.save(output)
-    print(f"✅ Generated: {output}")
+    output_file = OUTPUT_DIR / f"{meta['flow_name']}.docx"
+    doc.save(output_file)
+
+    print(f"✅ Generated: {output_file}")
+
+print("\n🎉 Documentation generation completed successfully")
