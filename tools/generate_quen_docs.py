@@ -7,8 +7,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from docx import Document
 
-QUBRID_API_URL = "https://platform.qubrid.com/api/v1/chat/completions"
-MODEL_NAME = "qwen-instruct"
+# =====================================================
+# Qubrid Configuration (Qwen3-Max)
+# =====================================================
+
+QUBRID_API_URL = "https://platform.qubrid.com/api/v1/inference/qwen3-max"
 API_KEY = os.getenv("QUBRID_API_KEY")
 
 BASE_ARTIFACTS_DIR = Path("cpi-artifacts")
@@ -18,6 +21,10 @@ if not API_KEY:
     print("❌ QUBRID_API_KEY not set")
     sys.exit(1)
 
+# =====================================================
+# Package Handling
+# =====================================================
+
 def list_packages():
     return [p.name for p in BASE_ARTIFACTS_DIR.iterdir() if p.is_dir()]
 
@@ -26,64 +33,89 @@ def get_package_name():
     if len(sys.argv) == 2:
         return sys.argv[1]
 
-    # Local mode → interactive
+    # Local interactive mode
     packages = list_packages()
+    if not packages:
+        raise RuntimeError("No CPI packages found")
+
     print("\n📦 Available CPI Packages:\n")
     for i, pkg in enumerate(packages, 1):
         print(f"{i}. {pkg}")
 
     choice = input("\nEnter package number: ").strip()
-    if not choice.isdigit():
-        raise ValueError("Invalid selection")
+    if not choice.isdigit() or int(choice) not in range(1, len(packages) + 1):
+        raise ValueError("Invalid package selection")
 
     return packages[int(choice) - 1]
+
+# =====================================================
+# Prompt
+# =====================================================
 
 def build_prompt(name, xml):
     return (
         "You are a senior SAP CPI Technical Architect.\n\n"
-        "Generate a SAP CPI Technical Specification document with this structure:\n"
+        "Generate a SAP CPI Technical Specification document "
+        "in professional language with the following STRICT structure:\n\n"
         "1. Introduction\n"
-        "1.1 Purpose\n"
-        "1.2 Scope\n"
+        "   1.1 Purpose\n"
+        "   1.2 Scope\n"
         "2. Integration Overview\n"
-        "2.1 Integration Architecture\n"
-        "2.2 Integration Components\n"
+        "   2.1 Integration Architecture\n"
+        "   2.2 Integration Components\n"
         "3. Integration Scenarios\n"
-        "3.1 Scenario Description\n"
-        "3.2 Data Flow\n"
-        "3.3 Security Requirements\n"
+        "   3.1 Scenario Description\n"
+        "   3.2 Data Flow\n"
+        "   3.3 Security Requirements\n"
         "4. Error Handling and Logging\n"
         "5. Testing and Validation\n\n"
         f"iFlow Name: {name}\n\n"
-        f"iFlow XML:\n{xml}"
+        "SAP CPI iFlow XML:\n"
+        f"{xml}"
     )
 
+# =====================================================
+# Qubrid Inference Call (CORRECT)
+# =====================================================
+
 def call_qwen(prompt):
-    r = requests.post(
+    response = requests.post(
         QUBRID_API_URL,
         headers={
             "Authorization": f"Bearer {API_KEY}",
             "Content-Type": "application/json",
         },
         json={
-            "model": MODEL_NAME,
-            "messages": [
-                {"role": "system", "content": "You are an SAP CPI expert."},
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.2,
-            "max_tokens": 3500,
+            "input": prompt,
+            "parameters": {
+                "temperature": 0.2,
+                "max_new_tokens": 3500
+            }
         },
-        timeout=120,
+        timeout=180,
     )
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+
+    response.raise_for_status()
+    data = response.json()
+
+    if "output" not in data:
+        raise RuntimeError(f"Unexpected response: {data}")
+
+    return data["output"]
+
+# =====================================================
+# DOCX Writer
+# =====================================================
 
 def save_docx(text, path):
     doc = Document()
     for line in text.split("\n"):
         doc.add_paragraph(line)
     doc.save(path)
+
+# =====================================================
+# Main
+# =====================================================
 
 def main():
     package = get_package_name()
@@ -105,16 +137,21 @@ def main():
 
     for f in flows:
         try:
+            print(f"➡ Processing {f.name}")
+
             xml = f.read_text(encoding="utf-8")
-            ET.fromstring(xml)
+            ET.fromstring(xml)  # validate XML
 
             doc_text = call_qwen(build_prompt(f.stem, xml))
             out = out_dir / f"{f.stem}.docx"
             save_docx(doc_text, out)
 
-            print(f"✅ {out}")
+            print(f"✅ Generated {out}")
+
         except Exception as e:
             print(f"❌ {f.name}: {e}")
+
+    print("\n🎉 Documentation generation completed")
 
 if __name__ == "__main__":
     main()
