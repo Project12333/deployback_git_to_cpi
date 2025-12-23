@@ -1,10 +1,23 @@
 import os
 import json
 import requests
+from pathlib import Path
 from parse_iflow import parse_iflow
 
 QWEN_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
 QWEN_API_KEY = os.environ["QWEN_API_KEY"]
+
+PACKAGE_NAME = os.environ.get("PACKAGE_NAME")
+if not PACKAGE_NAME:
+    raise Exception("PACKAGE_NAME environment variable not set")
+
+BASE_DIR = Path("cpi-artifacts") / PACKAGE_NAME
+OUTPUT_DIR = Path("docs") / PACKAGE_NAME
+
+if not BASE_DIR.exists():
+    raise Exception(f"Package folder not found: {BASE_DIR}")
+
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def build_prompt(meta):
     return f"""
@@ -56,16 +69,22 @@ def call_qwen(prompt):
     r.raise_for_status()
     return r.json()["output"]["text"]
 
-if __name__ == "__main__":
-    iflow = os.environ["IFLOW_PATH"]
-    meta = parse_iflow(iflow)
+# -------- MAIN --------
+iflow_files = list(BASE_DIR.rglob("*.iflw"))
 
+if not iflow_files:
+    raise Exception(f"No .iflw files found in package {PACKAGE_NAME}")
+
+for iflow in iflow_files:
+    print(f"Processing iFlow: {iflow}")
+
+    meta = parse_iflow(iflow)
     doc = call_qwen(build_prompt(meta))
 
-    out = f"docs/{meta['name']}.md"
-    os.makedirs("docs", exist_ok=True)
-
-    with open(out, "w", encoding="utf-8") as f:
+    out_file = OUTPUT_DIR / f"{meta['name']}.md"
+    with open(out_file, "w", encoding="utf-8") as f:
         f.write(doc)
 
-    print(f"Generated {out}")
+    print(f"Generated {out_file}")
+
+print(f"Documentation generation completed for package: {PACKAGE_NAME}")
