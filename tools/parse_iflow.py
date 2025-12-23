@@ -2,22 +2,28 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 def parse_iflow(iflow_path):
-    tree = ET.parse(iflow_path)
-    root = tree.getroot()
-
     data = {
         "name": Path(iflow_path).stem,
         "adapters": set(),
         "scripts": [],
         "mappings": [],
-        "security": [],
+        "security": []
     }
+
+    try:
+        tree = ET.parse(iflow_path)
+        root = tree.getroot()
+    except Exception as e:
+        data["error"] = str(e)
+        return data
 
     for elem in root.iter():
         tag = elem.tag.lower()
 
         if "adaptertype" in tag:
-            data["adapters"].add(elem.attrib.get("adapterType", ""))
+            val = elem.attrib.get("adapterType")
+            if val:
+                data["adapters"].add(val)
 
         if "script" in tag:
             name = elem.attrib.get("name")
