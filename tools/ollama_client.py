@@ -4,7 +4,7 @@ import json
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "deepseek-r1:7b"
 
-def call_ollama(prompt):
+def call_ollama(prompt: str) -> str:
     payload = {
         "model": MODEL,
         "prompt": prompt,
@@ -19,7 +19,7 @@ def call_ollama(prompt):
         OLLAMA_URL,
         json=payload,
         stream=True,
-        timeout=None  # IMPORTANT: prevent timeout
+        timeout=None
     )
 
     full_text = ""
@@ -27,10 +27,8 @@ def call_ollama(prompt):
     for line in response.iter_lines():
         if not line:
             continue
-
         data = json.loads(line.decode("utf-8"))
         full_text += data.get("response", "")
-
         if data.get("done"):
             break
 
