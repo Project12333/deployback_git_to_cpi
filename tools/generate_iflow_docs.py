@@ -74,7 +74,7 @@ Components: {meta['components']}
 # -----------------------------
 for iflw in PACKAGE_DIR.rglob("*.iflw"):
     meta = parse_iflow(iflw)
-    content = generate(build_prompt(meta))
+    content = call_ollama(build_prompt(meta))
 
     doc = Document()
     add_header(doc)
