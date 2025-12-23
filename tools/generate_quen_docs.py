@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from docx import Document
 
-QUBRID_API_URL = "https://api.qubrid.com/v1/chat/completions"
+QUBRID_API_URL = "https://platform.qubrid.com/api/v1/chat/completions"
 MODEL_NAME = "qwen-instruct"
 API_KEY = os.getenv("QUBRID_API_KEY")
 
