@@ -18,6 +18,8 @@ API_KEY = os.getenv("QUBRID_API_KEY")
 BASE_ARTIFACTS_DIR = Path("cpi-artifacts")
 BASE_DOCS_DIR = Path("docs")
 
+MAX_XML_CHARS = 12000  # 🔑 critical to avoid 500 errors
+
 if not API_KEY:
     print("❌ QUBRID_API_KEY not set")
     sys.exit(1)
@@ -50,6 +52,15 @@ def get_package_name():
     return packages[int(choice) - 1]
 
 # =====================================================
+# XML Safety
+# =====================================================
+
+def shrink_xml(xml: str) -> str:
+    if len(xml) <= MAX_XML_CHARS:
+        return xml
+    return xml[:MAX_XML_CHARS] + "\n<!-- XML truncated to avoid payload overflow -->"
+
+# =====================================================
 # Prompt
 # =====================================================
 
@@ -57,7 +68,7 @@ def build_prompt(iflow_name, xml):
     return (
         "You are a senior SAP CPI Technical Architect.\n\n"
         "Generate a professional SAP CPI Technical Specification document "
-        "based strictly on the provided iFlow XML.\n\n"
+        "STRICTLY based on the information available in the iFlow XML.\n\n"
         "Use EXACTLY this structure:\n\n"
         "1. Introduction\n"
         "   1.1 Purpose\n"
@@ -72,12 +83,12 @@ def build_prompt(iflow_name, xml):
         "4. Error Handling and Logging\n"
         "5. Testing and Validation\n\n"
         f"iFlow Name: {iflow_name}\n\n"
-        "SAP CPI iFlow XML:\n"
+        "SAP CPI iFlow XML (trimmed if required):\n"
         f"{xml}"
     )
 
 # =====================================================
-# Qubrid API Call (CORRECT FOR YOUR ACCOUNT)
+# Qubrid API Call
 # =====================================================
 
 def call_qwen(prompt):
@@ -94,7 +105,7 @@ def call_qwen(prompt):
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.2,
-            "max_tokens": 3500,
+            "max_tokens": 2500,  # 🔑 reduced to stay safe
             "stream": False
         },
         timeout=180,
@@ -140,10 +151,12 @@ def main():
         try:
             print(f"➡ Processing {flow.name}")
 
-            xml = flow.read_text(encoding="utf-8")
-            ET.fromstring(xml)  # validate XML
+            raw_xml = flow.read_text(encoding="utf-8")
+            ET.fromstring(raw_xml)  # validate XML
 
-            doc_text = call_qwen(build_prompt(flow.stem, xml))
+            safe_xml = shrink_xml(raw_xml)
+            doc_text = call_qwen(build_prompt(flow.stem, safe_xml))
+
             output_file = out_dir / f"{flow.stem}.docx"
             save_docx(doc_text, output_file)
 
