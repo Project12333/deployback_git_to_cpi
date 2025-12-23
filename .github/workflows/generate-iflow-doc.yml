@@ -1,43 +1,31 @@
-name: Generate CPI iFlow Documentation
+name: Generate CPI Docs
 
 on:
   workflow_dispatch:
-    inputs:
-      package:
-        description: "CPI Package name (folder under cpi-artifacts)"
-        required: true
-        type: string
 
 jobs:
-  generate-doc:
-    runs-on: ubuntu-latest
+  docs:
+    runs-on: self-hosted
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          pip install requests
+          pip install requests python-docx
 
-      - name: Generate docs for selected package
-        env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          PACKAGE_NAME: ${{ inputs.package }}
+      - name: Check Ollama
         run: |
-          python tools/generate_doc.py
+          curl http://localhost:11434/api/tags
 
-      - name: Commit generated docs
-        env:
-          PACKAGE_NAME: ${{ inputs.package }}
+      - name: Generate documentation
+        run: |
+          python tools/generate_iflow_docs.py
+
+      - name: Commit docs
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add docs/
-          git commit -m "Auto-generate CPI docs for package ${PACKAGE_NAME}" || echo "No changes"
+          git add generated-docs || echo "Nothing to add"
+          git commit -m "Auto-generate CPI documentation" || echo "No changes"
           git push
