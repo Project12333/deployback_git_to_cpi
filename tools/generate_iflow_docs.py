@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 import xml.etree.ElementTree as ET
+
 from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -30,6 +31,11 @@ OUTPUT_DIR = Path("generated-docs") / PACKAGE
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 LOGOS_DIR = Path("tools/logos")
+SAP_LOGO = LOGOS_DIR / "sap.png"
+MM_LOGO = LOGOS_DIR / "motiveminds.png"
+
+if not SAP_LOGO.exists() or not MM_LOGO.exists():
+    raise SystemExit("❌ Logo files missing in tools/logos")
 
 # -------------------------------------------------
 # Word helpers
@@ -39,22 +45,30 @@ def add_header(doc: Document):
     section.different_first_page_header_footer = False
 
     header = section.header
-    header.paragraphs.clear()
 
-    table = header.add_table(rows=1, cols=2)
+    # Create table WITH WIDTH (mandatory in header)
+    table = header.add_table(
+        rows=1,
+        cols=2,
+        width=Inches(6.5)
+    )
     table.autofit = False
 
-    left = table.cell(0, 0).paragraphs[0]
-    left.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    left.add_run().add_picture(
-        str(LOGOS_DIR / "sap.png"),
+    # Left cell – SAP logo
+    left_cell = table.cell(0, 0)
+    left_para = left_cell.paragraphs[0]
+    left_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    left_para.add_run().add_picture(
+        str(SAP_LOGO),
         width=Inches(1.2)
     )
 
-    right = table.cell(0, 1).paragraphs[0]
-    right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    right.add_run().add_picture(
-        str(LOGOS_DIR / "motiveminds.png"),
+    # Right cell – MotiveMinds logo
+    right_cell = table.cell(0, 1)
+    right_para = right_cell.paragraphs[0]
+    right_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    right_para.add_run().add_picture(
+        str(MM_LOGO),
         width=Inches(1.5)
     )
 
@@ -62,13 +76,20 @@ def add_header(doc: Document):
 # CPI parsing
 # -------------------------------------------------
 def parse_iflow(iflw_path: Path):
-    tree = ET.parse(iflw_path)
-    root = tree.getroot()
+    try:
+        tree = ET.parse(iflw_path)
+        root = tree.getroot()
+    except Exception as e:
+        return {
+            "flow_name": iflw_path.stem,
+            "components": "Unable to parse iFlow XML"
+        }
 
     components = set()
     for elem in root.iter():
-        if "name" in elem.attrib:
-            components.add(elem.attrib["name"])
+        name = elem.attrib.get("name")
+        if name:
+            components.add(name)
 
     return {
         "flow_name": iflw_path.stem,
@@ -109,28 +130,32 @@ Use concise, enterprise-grade language.
 # Main execution
 # -------------------------------------------------
 iflows = list(PACKAGE_DIR.rglob("*.iflw"))
-print(f"Package path: {PACKAGE_DIR}")
-print(f"iFlows found: {len(iflows)}")
+
+print(f"📦 Package path: {PACKAGE_DIR}")
+print(f"🔍 iFlows found: {len(iflows)}")
 
 if not iflows:
     raise SystemExit("⚠ No iFlows found")
 
 for iflw in iflows:
-    print(f"Processing iFlow: {iflw.stem}")
+    print(f"\n➡ Processing iFlow: {iflw.stem}")
 
     meta = parse_iflow(iflw)
-    print("Sending request to Ollama...")
 
+    print("🤖 Sending request to Ollama (DeepSeek)...")
     ai_text = call_ollama(build_prompt(meta))
 
     doc = Document()
     add_header(doc)
+
     doc.add_heading(meta["flow_name"], level=1)
 
-    for line in ai_text.split("\n"):
+    for line in ai_text.splitlines():
         doc.add_paragraph(line)
 
     output_file = OUTPUT_DIR / f"{meta['flow_name']}.docx"
     doc.save(output_file)
 
     print(f"✅ Generated: {output_file}")
+
+print("\n🎉 Documentation generation completed successfully")
