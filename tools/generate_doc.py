@@ -56,7 +56,7 @@ Rules:
 
 def call_qwen(prompt):
     payload = {
-        "model": "qwen3-max",
+        "model": "qwen-plus", 
         "input": {"prompt": prompt}
     }
 
