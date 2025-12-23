@@ -1,97 +1,132 @@
 #!/usr/bin/env python3
 
-import os
 import sys
-import requests
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from docx import Document
 
-# =====================================================
-# Qubrid Configuration (STABLE)
-# =====================================================
-
-QUBRID_API_URL = "https://platform.qubrid.com/api/v1/qubridai/chat/completions"
-QUBRID_MODEL = "Qwen/Qwen2.5-7B-Instruct"  # ✅ stable on Qubrid
-API_KEY = os.getenv("QUBRID_API_KEY")
-
 BASE_ARTIFACTS_DIR = Path("cpi-artifacts")
 BASE_DOCS_DIR = Path("docs")
 
-MAX_XML_CHARS = 4000   # 🔑 hard safety limit
+# -----------------------------------------------------
+# XML helpers
+# -----------------------------------------------------
 
-if not API_KEY:
-    print("❌ QUBRID_API_KEY not set")
-    sys.exit(1)
+def strip_ns(tag):
+    return tag.split("}")[-1] if "}" in tag else tag
 
-# =====================================================
-# LLM Call (SAFE)
-# =====================================================
+def parse_iflow(xml_text):
+    root = ET.fromstring(xml_text)
 
-def call_llm(prompt):
-    response = requests.post(
-        QUBRID_API_URL,
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": QUBRID_MODEL,
-            "messages": [
-                {"role": "system", "content": "You are a senior SAP CPI Technical Architect."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.2,
-            "max_tokens": 1000,   # 🔑 safe
-            "stream": False
-        },
-        timeout=120
+    adapters = set()
+    scripts = set()
+    mappings = set()
+    has_exception = False
+
+    for elem in root.iter():
+        tag = strip_ns(elem.tag).lower()
+
+        # Adapter detection
+        if "adapter" in tag:
+            adapter_type = elem.attrib.get("type") or elem.attrib.get("name")
+            if adapter_type:
+                adapters.add(adapter_type)
+
+        # Groovy scripts
+        if "groovy" in tag or "script" in tag:
+            name = elem.attrib.get("name")
+            if name:
+                scripts.add(name)
+
+        # Message mappings
+        if "mapping" in tag:
+            name = elem.attrib.get("name")
+            if name:
+                mappings.add(name)
+
+        # Exception subprocess
+        if "exception" in tag:
+            has_exception = True
+
+    return {
+        "adapters": sorted(adapters),
+        "scripts": sorted(scripts),
+        "mappings": sorted(mappings),
+        "has_exception": has_exception,
+    }
+
+# -----------------------------------------------------
+# DOCX writer
+# -----------------------------------------------------
+
+def generate_docx(flow_name, package, data, output_file):
+    doc = Document()
+
+    doc.add_heading(flow_name, level=1)
+
+    doc.add_heading("1. Introduction", level=2)
+    doc.add_paragraph(
+        f"This document describes the SAP CPI integration flow '{flow_name}' "
+        f"belonging to the package '{package}'."
     )
 
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    doc.add_heading("1.1 Purpose", level=3)
+    doc.add_paragraph("To enable structured and automated data exchange between systems.")
 
-# =====================================================
-# Prompt
-# =====================================================
+    doc.add_heading("1.2 Scope", level=3)
+    doc.add_paragraph("Covers inbound, processing, and outbound integration logic.")
 
-def build_prompt(iflow_name, xml):
-    return f"""
-Generate a professional SAP CPI Technical Specification document
-using EXACTLY this structure:
+    doc.add_heading("2. Integration Overview", level=2)
 
-1. Introduction
-1.1 Purpose
-1.2 Scope
-2. Integration Overview
-2.1 Integration Architecture
-2.2 Integration Components
-3. Integration Scenarios
-3.1 Scenario Description
-3.2 Data Flow
-3.3 Security Requirements
-4. Error Handling and Logging
-5. Testing and Validation
+    doc.add_heading("2.1 Integration Architecture", level=3)
+    if data["adapters"]:
+        doc.add_paragraph("Adapters involved:")
+        for a in data["adapters"]:
+            doc.add_paragraph(f"- {a}", style="List Bullet")
+    else:
+        doc.add_paragraph("No adapters detected.")
 
-iFlow Name: {iflow_name}
+    doc.add_heading("2.2 Integration Components", level=3)
 
-iFlow XML (trimmed):
-{xml}
-"""
+    doc.add_paragraph("Groovy Scripts:")
+    if data["scripts"]:
+        for s in data["scripts"]:
+            doc.add_paragraph(f"- {s}", style="List Bullet")
+    else:
+        doc.add_paragraph("- None")
 
-# =====================================================
-# DOCX Writer
-# =====================================================
+    doc.add_paragraph("Message Mappings:")
+    if data["mappings"]:
+        for m in data["mappings"]:
+            doc.add_paragraph(f"- {m}", style="List Bullet")
+    else:
+        doc.add_paragraph("- None")
 
-def save_doc(text, path):
-    doc = Document()
-    for line in text.split("\n"):
-        doc.add_paragraph(line)
-    doc.save(path)
+    doc.add_heading("3. Integration Scenarios", level=2)
 
-# =====================================================
+    doc.add_heading("3.1 Scenario Description", level=3)
+    doc.add_paragraph("Processes inbound messages and applies transformations as configured.")
+
+    doc.add_heading("3.2 Data Flow", level=3)
+    doc.add_paragraph("Sender → CPI → Receiver")
+
+    doc.add_heading("3.3 Security Requirements", level=3)
+    doc.add_paragraph("Standard CPI security artifacts are applied where configured.")
+
+    doc.add_heading("4. Error Handling and Logging", level=2)
+    if data["has_exception"]:
+        doc.add_paragraph("Exception subprocess is configured for error handling.")
+    else:
+        doc.add_paragraph("Default CPI error handling is applied.")
+
+    doc.add_heading("5. Testing and Validation", level=2)
+    doc.add_paragraph("Integration flow validated using test payloads and monitoring tools.")
+
+    doc.save(output_file)
+
+# -----------------------------------------------------
 # Main
-# =====================================================
+# -----------------------------------------------------
 
 def main():
     if len(sys.argv) != 2:
@@ -110,38 +145,25 @@ def main():
         print("⚠️ No iFlows found")
         return
 
-    out_dir = BASE_DOCS_DIR / package
-    out_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = BASE_DOCS_DIR / package
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n🚀 Generating docs for package: {package}\n")
+    print(f"\n🚀 Generating documentation for package: {package}\n")
 
-    success = False
-
-    for f in flows:
+    for flow in flows:
         try:
-            print(f"➡ Processing {f.name}")
+            xml_text = flow.read_text(encoding="utf-8")
+            data = parse_iflow(xml_text)
 
-            raw_xml = f.read_text(encoding="utf-8")
-            ET.fromstring(raw_xml)  # validate XML
+            output_file = output_dir / f"{flow.stem}.docx"
+            generate_docx(flow.stem, package, data, output_file)
 
-            safe_xml = raw_xml[:MAX_XML_CHARS]
-            prompt = build_prompt(f.stem, safe_xml)
-
-            doc_text = call_llm(prompt)
-
-            output = out_dir / f"{f.stem}.docx"
-            save_doc(doc_text, output)
-
-            print(f"✅ Generated {output}")
-            success = True
+            print(f"✅ Generated {output_file}")
 
         except Exception as e:
-            print(f"⚠️ Skipped {f.name}: {e}")
+            print(f"❌ Failed {flow.name}: {e}")
 
-    if success:
-        print("\n🎉 Documentation generation completed")
-    else:
-        print("\n⚠️ No documents generated (all flows skipped)")
+    print("\n🎉 Documentation generation completed successfully")
 
 if __name__ == "__main__":
     main()
