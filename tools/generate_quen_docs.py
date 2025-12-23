@@ -8,10 +8,11 @@ from pathlib import Path
 from docx import Document
 
 # =====================================================
-# Qubrid Configuration (Qwen3-Max)
+# Qubrid Configuration (OpenAI-compatible API)
 # =====================================================
 
-QUBRID_API_URL = "https://platform.qubrid.com/api/v1/inference/qwen3-max"
+QUBRID_API_URL = "https://platform.qubrid.com/api/v1/qubridai/chat/completions"
+QUBRID_MODEL = "Qwen/Qwen3-Coder-30B-A3B-Instruct"
 API_KEY = os.getenv("QUBRID_API_KEY")
 
 BASE_ARTIFACTS_DIR = Path("cpi-artifacts")
@@ -52,11 +53,12 @@ def get_package_name():
 # Prompt
 # =====================================================
 
-def build_prompt(name, xml):
+def build_prompt(iflow_name, xml):
     return (
         "You are a senior SAP CPI Technical Architect.\n\n"
-        "Generate a SAP CPI Technical Specification document "
-        "in professional language with the following STRICT structure:\n\n"
+        "Generate a professional SAP CPI Technical Specification document "
+        "based strictly on the provided iFlow XML.\n\n"
+        "Use EXACTLY this structure:\n\n"
         "1. Introduction\n"
         "   1.1 Purpose\n"
         "   1.2 Scope\n"
@@ -69,13 +71,13 @@ def build_prompt(name, xml):
         "   3.3 Security Requirements\n"
         "4. Error Handling and Logging\n"
         "5. Testing and Validation\n\n"
-        f"iFlow Name: {name}\n\n"
+        f"iFlow Name: {iflow_name}\n\n"
         "SAP CPI iFlow XML:\n"
         f"{xml}"
     )
 
 # =====================================================
-# Qubrid Inference Call (CORRECT)
+# Qubrid API Call (CORRECT FOR YOUR ACCOUNT)
 # =====================================================
 
 def call_qwen(prompt):
@@ -86,22 +88,21 @@ def call_qwen(prompt):
             "Content-Type": "application/json",
         },
         json={
-            "input": prompt,
-            "parameters": {
-                "temperature": 0.2,
-                "max_new_tokens": 3500
-            }
+            "model": QUBRID_MODEL,
+            "messages": [
+                {"role": "system", "content": "You are an SAP CPI expert."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 3500,
+            "stream": False
         },
         timeout=180,
     )
 
     response.raise_for_status()
     data = response.json()
-
-    if "output" not in data:
-        raise RuntimeError(f"Unexpected response: {data}")
-
-    return data["output"]
+    return data["choices"][0]["message"]["content"]
 
 # =====================================================
 # DOCX Writer
@@ -135,21 +136,21 @@ def main():
 
     print(f"\n🚀 Generating docs for package: {package}\n")
 
-    for f in flows:
+    for flow in flows:
         try:
-            print(f"➡ Processing {f.name}")
+            print(f"➡ Processing {flow.name}")
 
-            xml = f.read_text(encoding="utf-8")
+            xml = flow.read_text(encoding="utf-8")
             ET.fromstring(xml)  # validate XML
 
-            doc_text = call_qwen(build_prompt(f.stem, xml))
-            out = out_dir / f"{f.stem}.docx"
-            save_docx(doc_text, out)
+            doc_text = call_qwen(build_prompt(flow.stem, xml))
+            output_file = out_dir / f"{flow.stem}.docx"
+            save_docx(doc_text, output_file)
 
-            print(f"✅ Generated {out}")
+            print(f"✅ Generated {output_file}")
 
         except Exception as e:
-            print(f"❌ {f.name}: {e}")
+            print(f"❌ {flow.name}: {e}")
 
     print("\n🎉 Documentation generation completed")
 
