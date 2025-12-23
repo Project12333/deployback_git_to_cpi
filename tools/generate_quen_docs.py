@@ -1,206 +1,121 @@
+#!/usr/bin/env python3
+
 import os
-import argparse
+import sys
+import requests
 import xml.etree.ElementTree as ET
-from datetime import date
+from pathlib import Path
 
-from docx import Document
-from docx.shared import Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+# ===============================
+# Configuration
+# ===============================
 
-from ollama_client import generate_section
+QUBRID_API_URL = "https://api.qubrid.com/v1/chat/completions"
+MODEL_NAME = "qwen-instruct"
+API_KEY = os.getenv("QUBRID_API_KEY")
 
-# -------------------------------------------------
-# Logo paths
-# -------------------------------------------------
-SAP_LOGO = "tools/logos/sap.png"
-MOTIVE_LOGO = "tools/logos/motiveminds.png"
+if not API_KEY:
+    print("❌ ERROR: QUBRID_API_KEY environment variable not set")
+    sys.exit(1)
 
+# ===============================
+# Helpers
+# ===============================
 
-# -------------------------------------------------
-# Locate iFlow file
-# -------------------------------------------------
-def find_iflow(package):
-    base = f"cpi-artifacts/{package}"
-    for root, _, files in os.walk(base):
-        for file in files:
-            if file.endswith(".iflw"):
-                return os.path.join(root, file)
-    return None
+def read_iflow_xml(iflow_path: Path) -> str:
+    try:
+        return iflow_path.read_text(encoding="utf-8")
+    except Exception as e:
+        raise RuntimeError(f"Failed to read iFlow file: {e}")
 
+def validate_xml(xml_text: str) -> None:
+    try:
+        ET.fromstring(xml_text)
+    except Exception as e:
+        raise RuntimeError(f"Invalid iFlow XML: {e}")
 
-# -------------------------------------------------
-# Extract iFlow semantics from BPMN XML
-# -------------------------------------------------
-def extract_iflow_semantics(iflw_path):
-    tree = ET.parse(iflw_path)
-    root = tree.getroot()
-
-    data = {
-        "flow_name": os.path.splitext(os.path.basename(iflw_path))[0],
-        "senders": set(),
-        "receivers": set(),
-        "content_modifiers": [],
-        "scripts": [],
-        "mappings": [],
-        "exception_handling": False
-    }
-
-    for elem in root.iter():
-        tag = elem.tag.split("}")[-1]
-        name = elem.attrib.get("name", "").strip()
-        sap_type = elem.attrib.get("{http://sap.com/bpmn/extension}type", "")
-
-        if tag == "startEvent":
-            data["senders"].add("Message-based Start Event")
-
-        elif tag == "endEvent":
-            data["receivers"].add("Receiver Endpoint")
-
-        elif tag == "serviceTask":
-            if "ContentModifier" in sap_type:
-                data["content_modifiers"].append(name or "Content Modifier")
-            elif "Groovy" in sap_type:
-                data["scripts"].append(name or "Groovy Script")
-            elif "MessageMapping" in sap_type:
-                data["mappings"].append(name or "Message Mapping")
-
-        elif tag == "subProcess" and elem.attrib.get("triggeredByEvent") == "true":
-            data["exception_handling"] = True
-
-    return data
-
-
-# -------------------------------------------------
-# Word header with logos
-# -------------------------------------------------
-def add_header(section):
-    header = section.header
-    header.is_linked_to_previous = False
-
-    table = header.add_table(rows=1, cols=2, width=Inches(6))
-
-    left_para = table.cell(0, 0).paragraphs[0]
-    left_para.add_run().add_picture(SAP_LOGO, width=Inches(1.2))
-
-    right_para = table.cell(0, 1).paragraphs[0]
-    right_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    right_para.add_run().add_picture(MOTIVE_LOGO, width=Inches(1.5))
-
-
-# -------------------------------------------------
-# Main document generator
-# -------------------------------------------------
-def generate_doc(package):
-    iflw_path = find_iflow(package)
-    if not iflw_path:
-        raise Exception("No .iflw file found for the given package")
-
-    iflow = extract_iflow_semantics(iflw_path)
-
-    output_dir = f"cpi-artifacts/{package}/docs"
-    os.makedirs(output_dir, exist_ok=True)
-
-    doc = Document()
-    add_header(doc.sections[0])
-
-    # ---------------- COVER PAGE ----------------
-    doc.add_heading(iflow["flow_name"], level=0)
-    doc.add_paragraph("\nAuthor\nSindhu")
-    doc.add_paragraph(f"\nDate\n{date.today()}")
-    doc.add_paragraph("\nVersion\nDraft")
-    doc.add_page_break()
-
-    # ---------------- TOC PAGE ----------------
-    doc.add_heading("Table of Contents", level=1)
-    doc.add_paragraph(
+def build_prompt(iflow_name: str, xml_content: str) -> str:
+    return (
+        "You are a senior SAP CPI Technical Architect.\n\n"
+        "Analyze the following SAP CPI iFlow XML and generate a professional "
+        "technical documentation in Markdown format.\n\n"
+        "STRICT STRUCTURE (do not add extra sections):\n"
         "1. Introduction\n"
         "   1.1 Purpose\n"
-        "   1.2 Scope\n\n"
+        "   1.2 Scope\n"
         "2. Integration Overview\n"
         "   2.1 Integration Architecture\n"
-        "   2.2 Integration Components\n\n"
+        "   2.2 Integration Components\n"
         "3. Integration Scenarios\n"
         "   3.1 Scenario Description\n"
-        "   3.2 Data Flows\n"
-        "   3.3 Security Requirements\n\n"
-        "4. Error Handling and Logging\n\n"
-        "5. Testing Validation\n\n"
-        "6. Reference Documents"
+        "   3.2 Data Flow\n"
+        "   3.3 Security Requirements\n"
+        "4. Error Handling and Logging\n"
+        "5. Testing and Validation\n\n"
+        f"iFlow Name: {iflow_name}\n\n"
+        "iFlow XML:\n"
+        f"{xml_content}"
     )
-    doc.add_page_break()
 
-    # ---------------- CONTENT SECTIONS ----------------
-    sections = [
-        (
-            "1.1 Purpose",
-            f"This document provides a technical description of the SAP Cloud Integration "
-            f"iFlow '{iflow['flow_name']}' based strictly on its design-time configuration."
-        ),
-        (
-            "1.2 Scope",
-            "The scope includes message flow behavior, processing steps, and runtime "
-            "characteristics explicitly modeled in the iFlow."
-        ),
-        (
-            "2.1 Integration Architecture",
-            f"Sender: {', '.join(iflow['senders']) or 'Not defined in iFlow'}\n"
-            f"Receiver: {', '.join(iflow['receivers']) or 'Not defined in iFlow'}\n"
-            "Runtime: SAP Cloud Integration tenant"
-        ),
-        (
-            "2.2 Integration Components",
-            f"Content Modifiers: {', '.join(iflow['content_modifiers']) or 'None'}\n"
-            f"Groovy Scripts: {', '.join(iflow['scripts']) or 'None'}\n"
-            f"Message Mappings: {', '.join(iflow['mappings']) or 'None'}"
-        ),
-        (
-            "3.1 Scenario Description",
-            "The integration scenario processes inbound messages through a linear "
-            "sequence of steps defined in the iFlow BPMN model."
-        ),
-        (
-            "3.2 Data Flows",
-            "Message flows sequentially from the sender through configured processing "
-            "steps and is delivered to the receiver endpoint."
-        ),
-        (
-            "3.3 Security Requirements",
-            "Security is enforced at adapter level. No explicit security configuration "
-            "is modeled directly within the iFlow design."
-        ),
-        (
-            "4. Error Handling and Logging",
-            "Explicit exception handling is modeled in the iFlow."
-            if iflow["exception_handling"]
-            else "The iFlow relies on standard SAP CPI error handling and monitoring."
-        ),
-        (
-            "5. Testing Validation",
-            "Testing includes test message execution, payload verification, and "
-            "monitoring via SAP CPI operational dashboards."
-        ),
-        (
-            "6. Reference Documents",
-            "SAP Integration Suite – Cloud Integration official documentation."
+def call_qwen(prompt: str) -> str:
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": "You are an SAP CPI expert."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 3000
+    }
+
+    response = requests.post(QUBRID_API_URL, headers=headers, json=payload, timeout=120)
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Qubrid API error {response.status_code}: {response.text}"
         )
-    ]
 
-    for title, context in sections:
-        doc.add_heading(title, level=2)
-        doc.add_paragraph(generate_section(title, context))
+    data = response.json()
+    return data["choices"][0]["message"]["content"]
 
-    output_file = f"{output_dir}/{package}_Technical_Spec.docx"
-    doc.save(output_file)
+# ===============================
+# Main
+# ===============================
 
-    print(f"Document generated successfully: {output_file}")
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python generate_quen_docs.py <path_to_iflw>")
+        sys.exit(1)
 
+    iflow_path = Path(sys.argv[1])
 
-# -------------------------------------------------
-# Entry point
-# -------------------------------------------------
+    if not iflow_path.exists():
+        print(f"❌ iFlow file not found: {iflow_path}")
+        sys.exit(1)
+
+    print(f"📄 Reading iFlow: {iflow_path.name}")
+
+    xml_content = read_iflow_xml(iflow_path)
+    validate_xml(xml_content)
+
+    prompt = build_prompt(iflow_path.stem, xml_content)
+
+    print("Sending request to Qwen (Qubrid)...")
+    doc_md = call_qwen(prompt)
+
+    output_dir = Path("docs")
+    output_dir.mkdir(exist_ok=True)
+
+    output_file = output_dir / f"{iflow_path.stem}.md"
+    output_file.write_text(doc_md, encoding="utf-8")
+
+    print("Documentation generated successfully")
+    print(f"📄 Output file: {output_file}")
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate SAP CPI iFlow documentation")
-    parser.add_argument("--package", required=True, help="CPI package name")
-    args = parser.parse_args()
-
-    generate_doc(args.package)
+    main()
