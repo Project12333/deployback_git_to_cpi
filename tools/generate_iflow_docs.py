@@ -3,7 +3,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 from docx import Document
 from docx.shared import Inches
-from ollama_client import generate
+from ollama_client import call_ollama
 
 # -----------------------------
 # Validate input
