@@ -7,18 +7,29 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from docx import Document
 
+# =====================================================
+# Qubrid Configuration (STABLE)
+# =====================================================
+
 QUBRID_API_URL = "https://platform.qubrid.com/api/v1/qubridai/chat/completions"
-QUBRID_MODEL = "Qwen/Qwen2.5-14B-Instruct"
+QUBRID_MODEL = "Qwen/Qwen2.5-7B-Instruct"  # ✅ stable on Qubrid
 API_KEY = os.getenv("QUBRID_API_KEY")
 
 BASE_ARTIFACTS_DIR = Path("cpi-artifacts")
 BASE_DOCS_DIR = Path("docs")
 
+MAX_XML_CHARS = 4000   # 🔑 hard safety limit
+
 if not API_KEY:
-    raise RuntimeError("QUBRID_API_KEY not set")
+    print("❌ QUBRID_API_KEY not set")
+    sys.exit(1)
+
+# =====================================================
+# LLM Call (SAFE)
+# =====================================================
 
 def call_llm(prompt):
-    r = requests.post(
+    response = requests.post(
         QUBRID_API_URL,
         headers={
             "Authorization": f"Bearer {API_KEY}",
@@ -31,18 +42,23 @@ def call_llm(prompt):
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.2,
-            "max_tokens": 1200,
+            "max_tokens": 1000,   # 🔑 safe
             "stream": False
         },
         timeout=120
     )
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
 
-def build_prompt(name, xml):
-    xml = xml[:5000]  # hard safety limit
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
+
+# =====================================================
+# Prompt
+# =====================================================
+
+def build_prompt(iflow_name, xml):
     return f"""
-Generate SAP CPI Technical Specification using this structure:
+Generate a professional SAP CPI Technical Specification document
+using EXACTLY this structure:
 
 1. Introduction
 1.1 Purpose
@@ -57,11 +73,15 @@ Generate SAP CPI Technical Specification using this structure:
 4. Error Handling and Logging
 5. Testing and Validation
 
-iFlow Name: {name}
+iFlow Name: {iflow_name}
 
-iFlow XML:
+iFlow XML (trimmed):
 {xml}
 """
+
+# =====================================================
+# DOCX Writer
+# =====================================================
 
 def save_doc(text, path):
     doc = Document()
@@ -69,25 +89,59 @@ def save_doc(text, path):
         doc.add_paragraph(line)
     doc.save(path)
 
+# =====================================================
+# Main
+# =====================================================
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python generate_quen_docs.py <PACKAGE_NAME>")
         sys.exit(1)
 
     package = sys.argv[1]
-    pkg_path = BASE_ARTIFACTS_DIR / package
-    flows = list(pkg_path.rglob("*.iflw"))
+    package_path = BASE_ARTIFACTS_DIR / package
+
+    if not package_path.exists():
+        print(f"❌ Package not found: {package}")
+        sys.exit(1)
+
+    flows = list(package_path.rglob("*.iflw"))
+    if not flows:
+        print("⚠️ No iFlows found")
+        return
 
     out_dir = BASE_DOCS_DIR / package
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for f in flows:
-        xml = f.read_text(encoding="utf-8")
-        ET.fromstring(xml)
-        doc_text = call_llm(build_prompt(f.stem, xml))
-        save_doc(doc_text, out_dir / f"{f.stem}.docx")
+    print(f"\n🚀 Generating docs for package: {package}\n")
 
-    print("✅ DOCX files generated")
+    success = False
+
+    for f in flows:
+        try:
+            print(f"➡ Processing {f.name}")
+
+            raw_xml = f.read_text(encoding="utf-8")
+            ET.fromstring(raw_xml)  # validate XML
+
+            safe_xml = raw_xml[:MAX_XML_CHARS]
+            prompt = build_prompt(f.stem, safe_xml)
+
+            doc_text = call_llm(prompt)
+
+            output = out_dir / f"{f.stem}.docx"
+            save_doc(doc_text, output)
+
+            print(f"✅ Generated {output}")
+            success = True
+
+        except Exception as e:
+            print(f"⚠️ Skipped {f.name}: {e}")
+
+    if success:
+        print("\n🎉 Documentation generation completed")
+    else:
+        print("\n⚠️ No documents generated (all flows skipped)")
 
 if __name__ == "__main__":
     main()
