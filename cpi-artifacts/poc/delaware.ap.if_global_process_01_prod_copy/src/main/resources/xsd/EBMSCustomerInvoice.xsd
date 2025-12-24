@@ -1,0 +1,63 @@
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Root">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Record" maxOccurs="unbounded" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element type="xs:byte" name="OrganizationCode"/>
+              <xs:element type="xs:int" name="InvoiceNumber"/>
+              <xs:element type="xs:string" name="Source"/>
+              <xs:element type="xs:int" name="Event"/>
+              <xs:element type="xs:dateTime" name="InvoiceDate"/>
+              <xs:element type="xs:short" name="BillToAccount"/>
+              <xs:element type="xs:short" name="OrderAccount"/>
+              <xs:element type="xs:float" name="Amount"/>
+              <xs:element type="xs:float" name="AmountDue"/>
+              <xs:element type="xs:string" name="Status"/>
+              <xs:element type="xs:string" name="Print"/>
+              <xs:element type="xs:string" name="PaymentSchedule"/>
+              <xs:element type="xs:byte" name="PaymentPlan"/>
+              <xs:element type="xs:string" name="Currency"/>
+              <xs:element type="xs:dateTime" name="ChangedOn"/>
+              <xs:element type="xs:string" name="ChangedByCode"/>
+              <xs:element type="xs:string" name="LastReminderDate"/>
+              <xs:element type="xs:byte" name="EscalationLevel"/>
+              <xs:element type="xs:string" name="SendReminder"/>
+              <xs:element type="xs:string" name="DueDate"/>
+              <xs:element type="xs:float" name="AmountPaid"/>
+              <xs:element type="xs:float" name="AdjustmentAmount"/>
+              <xs:element type="xs:float" name="FCAmount"/>
+              <xs:element type="xs:float" name="FCAmountPaid"/>
+              <xs:element type="xs:float" name="FCAdjustmentAmount"/>
+              <xs:element type="xs:float" name="FCAmountDue"/>
+              <xs:element type="xs:string" name="UserReference"/>
+              <xs:element type="xs:int" name="BillToContact"/>
+              <xs:element type="xs:string" name="EnteredBy"/>
+              <xs:element type="xs:dateTime" name="EnteredOn"/>
+              <xs:element type="xs:byte" name="Phase"/>
+              <xs:element type="xs:byte" name="ReferenceInvoice"/>
+              <xs:element type="xs:string" name="OrderDepartment"/>
+              <xs:element type="xs:string" name="Terms"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine1"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine2"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine3"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine4"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine5"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine6"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine7"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine8"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine9"/>
+              <xs:element type="xs:string" name="InvoiceAddressLine10"/>
+              <xs:element type="xs:string" name="UseInvoiceAddress"/>
+              <xs:element type="xs:string" name="CollectionStatus"/>
+              <xs:element type="xs:string" name="MgmtRptCode"/>
+              <xs:element type="xs:string" name="Emailed"/>
+              <xs:element type="xs:string" name="InvoiceSearch"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

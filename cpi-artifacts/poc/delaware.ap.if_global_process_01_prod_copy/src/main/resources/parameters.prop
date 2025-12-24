@@ -1,0 +1,18 @@
+#Wed Dec 24 07:36:44 UTC 2025
+Organization\ for\ Invoices=
+Search_String=EnteredOn ge DateTime&apos;${header.Interface_Date}T00\:00\:00.000&apos; and EnteredOn le DateTime&apos;${header.Interface_Date}T23\:59\:59.999&apos; and (Status eq &apos;O&apos; or Status eq &apos;I&apos;) and Phase eq &apos;1&apos; and UM ne &apos;%&apos; and UnitCost ne 0
+Registration\ Order\ Item\ Search\ String=Invoice eq 34896
+Hostname_Ungerboeck=https\://singex.ungerboeck.com/test3
+Organizations\ for\ Invoices=10,35,55
+Run\ Date=${date\:now\:yyyy-MM-dd&apos;T&apos;00\:00\:00}
+Credential_S4HC=CPI User for SAP S4 HANA Cloud
+S4\ HANA\ Cloud\ URL=https\://my302999-api.s4hana.ondemand.com
+Search\ String\ Customer\ Invoices=InvoiceNumber eq 45686
+Authentication=Basic
+Hostname_S4HC=https\://my302999-api.s4hana.ondemand.com
+Credential_Ungerboeck=CPI User for Ungerboeck Software
+User\ Credential=CPI User for SAP S/4 HANA Cloud
+Search\ String\ Journal\ Entry\ Details=Invoice eq 45686
+filter\ clearing=((AccountingDocumentType eq &apos;DR&apos; and DebitCreditCode eq &apos;H&apos;) or (AccountingDocumentType eq &apos;DG&apos; and DebitCreditCode eq &apos;S&apos;)) and ClearingCreationDate eq datetime&apos;${property.ProcessDate}&apos; and FinancialAccountType eq &apos;D&apos; and YY1_SourceSystem_JEI ne &apos;&apos; and (CompanyCode eq &apos;6150&apos; or CompanyCode eq &apos;6180&apos;)
+Hostname_S4HC_Gevme=https\://my302999-api.s4hana.ondemand.com
+filter\ payment=(AccountingDocumentType eq &apos;DZ&apos; or AccountingDocumentType eq &apos;ZP&apos;) and DebitCreditCode eq &apos;H&apos; and AccountingDocumentCreationD eq datetime&apos;${property.ProcessDate}&apos; and FinancialAccountType eq &apos;D&apos; and YY1_SourceSystem_JEI ne &apos;&apos; and (CompanyCode eq &apos;6150&apos; or CompanyCode eq &apos;6180&apos;)

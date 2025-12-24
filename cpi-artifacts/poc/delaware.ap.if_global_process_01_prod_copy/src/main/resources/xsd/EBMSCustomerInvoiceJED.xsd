@@ -1,0 +1,107 @@
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Root">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Record" maxOccurs="unbounded" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element type="xs:byte" name="Organization"/>
+              <xs:element type="xs:short" name="Year"/>
+              <xs:element type="xs:byte" name="Period"/>
+              <xs:element type="xs:string" name="Source"/>
+              <xs:element type="xs:short" name="EntryNumber"/>
+              <xs:element type="xs:byte" name="Line"/>
+              <xs:element type="xs:string" name="Status"/>
+              <xs:element type="xs:dateTime" name="Date"/>
+              <xs:element type="xs:string" name="Description"/>
+              <xs:element type="xs:float" name="Amount"/>
+              <xs:element type="xs:float" name="Units"/>
+              <xs:element type="xs:long" name="GLAccount"/>
+              <xs:element type="xs:string" name="GLSubAccount"/>
+              <xs:element type="xs:int" name="Reference"/>
+              <xs:element type="xs:dateTime" name="EnteredOn"/>
+              <xs:element type="xs:string" name="EnteredBy"/>
+              <xs:element type="xs:dateTime" name="ChangedOn"/>
+              <xs:element type="xs:string" name="ChangedBy"/>
+              <xs:element type="xs:string" name="Event"/>
+              <xs:element type="xs:int" name="Order"/>
+              <xs:element type="xs:byte" name="OrderLine"/>
+              <xs:element type="xs:int" name="Account"/>
+              <xs:element type="xs:byte" name="ARSequence"/>
+              <xs:element type="xs:string" name="Space"/>
+              <xs:element type="xs:string" name="ErrorMessage"/>
+              <xs:element type="xs:string" name="SubAccountType"/>
+              <xs:element type="xs:string" name="EventJobType"/>
+              <xs:element type="xs:string" name="SubAccountStatus"/>
+              <xs:element type="xs:string" name="EventCategory"/>
+              <xs:element type="xs:string" name="EventClass"/>
+              <xs:element type="xs:string" name="GLAccountMasked"/>
+              <xs:element type="xs:string" name="FunctionUsage"/>
+              <xs:element type="xs:string" name="Job"/>
+              <xs:element type="xs:string" name="CreateSubAccount"/>
+              <xs:element type="xs:byte" name="Voucher"/>
+              <xs:element type="xs:byte" name="APPaymentSequence"/>
+              <xs:element type="xs:byte" name="PONumber"/>
+              <xs:element type="xs:byte" name="POLine"/>
+              <xs:element type="xs:string" name="Reconciled"/>
+              <xs:element type="xs:string" name="ReconciledBy"/>
+              <xs:element type="xs:string" name="ReconciledOn"/>
+              <xs:element type="xs:short" name="Function"/>
+              <xs:element type="xs:string" name="TransAnalysisCode01"/>
+              <xs:element type="xs:string" name="TransAnalysisCode02"/>
+              <xs:element type="xs:string" name="TransAnalysisCode03"/>
+              <xs:element type="xs:int" name="ResourceType"/>
+              <xs:element type="xs:string" name="ResourceCode"/>
+              <xs:element type="xs:string" name="Space2X"/>
+              <xs:element type="xs:string" name="Space6X"/>
+              <xs:element type="xs:string" name="Department"/>
+              <xs:element type="xs:byte" name="ResourceClass"/>
+              <xs:element type="xs:byte" name="BudgetAmount"/>
+              <xs:element type="xs:byte" name="BudgetUnits"/>
+              <xs:element type="xs:int" name="Invoice"/>
+              <xs:element type="xs:byte" name="PaymentPlan"/>
+              <xs:element type="xs:string" name="TaxCategory"/>
+              <xs:element type="xs:string" name="ManagementReportCode"/>
+              <xs:element type="xs:string" name="ARSource"/>
+              <xs:element type="xs:string" name="ARType"/>
+              <xs:element type="xs:string" name="ARMethod"/>
+              <xs:element type="xs:string" name="PaymentPlanEntryType"/>
+              <xs:element type="xs:int" name="YearPeriod"/>
+              <xs:element type="xs:string" name="Generated"/>
+              <xs:element type="xs:string" name="InventoryType"/>
+              <xs:element type="xs:string" name="InventorySource"/>
+              <xs:element type="xs:string" name="InventoryDate"/>
+              <xs:element type="xs:byte" name="InventorySequence"/>
+              <xs:element type="xs:string" name="OrderDepartment"/>
+              <xs:element type="xs:string" name="ARControl"/>
+              <xs:element type="xs:string" name="AlternateGLAccount"/>
+              <xs:element type="xs:string" name="AlternateSubAccount"/>
+              <xs:element type="xs:string" name="PrepaidStatus"/>
+              <xs:element type="xs:byte" name="ContractSequence"/>
+              <xs:element type="xs:string" name="RevenueSpace"/>
+              <xs:element type="xs:string" name="RevenueUsage"/>
+              <xs:element type="xs:string" name="RevenueDepartment"/>
+              <xs:element type="xs:byte" name="CashBookSeqNbr"/>
+              <xs:element type="xs:string" name="Asset"/>
+              <xs:element type="xs:byte" name="AssetTransaction"/>
+              <xs:element type="xs:string" name="Currency"/>
+              <xs:element type="xs:float" name="FCAmount"/>
+              <xs:element type="xs:string" name="TransAnalysisCode04"/>
+              <xs:element type="xs:string" name="TransAnalysisCode05"/>
+              <xs:element type="xs:string" name="TransAnalysisCode06"/>
+              <xs:element type="xs:byte" name="DestinationOrganization"/>
+              <xs:element type="xs:string" name="ReferenceSequence"/>
+              <xs:element type="xs:string" name="DeferralStatus"/>
+              <xs:element type="xs:string" name="Division"/>
+              <xs:element type="xs:string" name="FunctionDepartment"/>
+              <xs:element type="xs:string" name="FunctionCategory"/>
+              <xs:element type="xs:string" name="ReconciledFYP"/>
+              <xs:element type="xs:string" name="ReconciledID"/>
+              <xs:element type="xs:string" name="InvoiceSearch"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
