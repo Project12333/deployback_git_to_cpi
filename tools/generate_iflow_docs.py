@@ -9,6 +9,7 @@ from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from ollama_client import call_ollama
+from docx.oxml import OxmlElement, ns
 
 # -------------------------------------------------
 # Arguments
