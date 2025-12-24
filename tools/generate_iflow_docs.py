@@ -55,6 +55,31 @@ def add_header(doc):
     right = table.cell(0, 1).paragraphs[0]
     right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     right.add_run().add_picture(str(MM_LOGO), width=Inches(1.5))
+# -------------------------------------------------
+# Footer(page number)
+# -------------------------------------------------
+def add_footer_with_page_number(doc):
+    section = doc.sections[0]
+    footer = section.footer
+
+    paragraph = footer.paragraphs[0]
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    run = paragraph.add_run()
+
+    # Create PAGE field
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(ns.qn('w:fldCharType'), 'begin')
+
+    instrText = OxmlElement('w:instrText')
+    instrText.text = "PAGE"
+
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(ns.qn('w:fldCharType'), 'end')
+
+    run._r.append(fldChar1)
+    run._r.append(instrText)
+    run._r.append(fldChar2)
 
 # -------------------------------------------------
 # Cover Page
@@ -226,6 +251,7 @@ for iflw in iflows:
 
     doc = Document()
     add_header(doc)
+    add_footer_with_page_number(doc)
     add_cover_page(doc, meta["flow_name"])
     add_toc(doc)
 
