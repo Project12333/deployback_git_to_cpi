@@ -167,17 +167,35 @@ def extract_section(text, label):
     start = text.index(label) + len(label)
     end = len(text)
 
-    for other in [
+    labels = [
         "Purpose:", "Scope:", "Integration Architecture:",
         "Integration Components:", "Scenario Description:",
         "Data Flows:", "Security Requirements:",
         "Error Handling and Logging:", "Testing Validation:",
         "Reference Documents:"
-    ]:
+    ]
+
+    for other in labels:
         if other != label and other in text[start:]:
             end = min(end, text.find(other, start))
 
-    return text[start:end].strip()
+    section = text[start:end]
+
+    cleaned_lines = []
+    for line in section.splitlines():
+        line = line.strip()
+
+        # 🔥 REMOVE MARKDOWN ARTIFACTS
+        if line in ("**", "*", "---"):
+            continue
+
+        # remove inline markdown bold
+        line = line.replace("**", "").replace("*", "")
+
+        if line:
+            cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines)
 
 # -------------------------------------------------
 # Discover iFlows (Windows safe)
