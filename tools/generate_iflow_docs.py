@@ -60,7 +60,10 @@ def add_header(doc):
 # Cover Page
 # -------------------------------------------------
 def add_cover_page(doc, flow_name):
-    doc.add_heading(flow_name, level=0)
+    title = doc.add_heading(flow_name, level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc.add_paragraph("")  # spacing
 
     table = doc.add_table(rows=3, cols=2)
     table.style = "Table Grid"
@@ -75,7 +78,6 @@ def add_cover_page(doc, flow_name):
     table.cell(2, 1).text = "Draft"
 
     doc.add_page_break()
-
 # -------------------------------------------------
 # Table of Contents (static FS)
 # -------------------------------------------------
