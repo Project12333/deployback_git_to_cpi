@@ -79,7 +79,64 @@ jobs:
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Generate documentation strictly following the provided TOC."
+          # -------------------------------------------------
+          # STRICT TOC-DRIVEN SYSTEM PROMPT
+          # -------------------------------------------------
+          SYSTEM_PROMPT=$(cat <<'PROMPT'
+          You are a senior SAP CPI Technical Architect.
+
+          CRITICAL INSTRUCTION:
+          You MUST generate the document using ONLY the following structure and headings.
+          Do NOT add, remove, rename, or reorder any section.
+          Do NOT introduce any additional headings or summaries.
+
+          MANDATORY DOCUMENT STRUCTURE (USE EXACTLY):
+
+          1. Introduction
+
+          1.1 Purpose
+          - Explain the specific business purpose of this iFlow.
+          - Base the explanation strictly on the provided CPI artifacts.
+
+          1.2 Scope
+          - Clearly state what is included and excluded.
+          - Mention systems, adapters, and integration boundaries.
+
+          2. Integration Overview
+
+          2.1 Integration Architecture
+          - Describe the end-to-end architecture.
+
+          2.2 Integration Components
+          - List and explain adapters, scripts, content modifiers, mappings.
+
+          3. Integration Scenarios
+
+          3.1 Scenario Description
+          - Provide a step-by-step integration flow description.
+
+          3.2 Data Flows
+          - Explain message flow, transformation, and routing logic.
+
+          3.3 Security Requirements
+          - Describe authentication, authorization, and credentials.
+
+          4. Error Handling and Logging
+          - Describe error handling and logging strategy.
+
+          5. Testing Validation
+          - Provide test cases in table format:
+            | Test Case ID | Scenario | Expected Outcome |
+
+          6. Reference Documents
+          - Mention CPI package, iFlow name, and related references.
+
+          STRICT RULES:
+          - Start directly from "1. Introduction".
+          - Use exact numbering and headings.
+          - Output must be valid Markdown only.
+          PROMPT
+          )
 
           ALL_DOCS_GENERATED=false
 
@@ -118,7 +175,7 @@ jobs:
             [ -z "$CONTENT" ] && continue
 
             # -------------------------------------------------
-            # COVER PAGE + TOC + GENERATED CONTENT (YAML-SAFE)
+            # COVER PAGE + TOC + GENERATED CONTENT
             # -------------------------------------------------
             printf '%s\n' \
             '<div style="page-break-after: always; text-align: center; margin-top: 200px;">' \
@@ -176,6 +233,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Cover + TOC + Content aligned"
+          git commit -m "🤖 DOCS: TOC-driven CPI Technical Specification"
           git push
-
