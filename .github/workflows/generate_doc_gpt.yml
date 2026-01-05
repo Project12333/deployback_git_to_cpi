@@ -24,24 +24,13 @@ jobs:
           sudo apt-get install -y jq python3 python3-pip
           pip3 install python-docx
 
-            - name: Generate iFlow Documentation
+                 - name: Generate iFlow Documentation
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
-          HEADING_COLOR: "#1f4e79"
         run: |
           set -e
 
-          API_URL="https://api.openai.com/v1/chat/completions"
-          MODEL="gpt-4o-mini"
-          BASE_DIR="cpi-artifacts/${PKG_ID}"
-
-          if [ ! -d "$BASE_DIR" ]; then
-            echo "::error::Package directory not found: $BASE_DIR"
-            exit 1
-          fi
-
-          # -------- SYSTEM PROMPT (YAML-SAFE) --------
           SYSTEM_PROMPT=$(cat <<'EOF'
 You are a senior SAP CPI Technical Architect. Your task is to analyze the provided artifacts and create a professional SAP CPI Technical Specification document.
 
@@ -92,6 +81,8 @@ REQUIRED STRUCTURE:
 <h1 style="color: #1f4e79;">6. Reference Documents</h1>
 EOF
 )
+
+          echo "SYSTEM PROMPT LOADED SUCCESSFULLY"
 
           # ---------------- PROCESS EACH IFLOW ----------------
           while IFS= read -r IFLOW_DIR; do
