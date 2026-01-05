@@ -60,7 +60,6 @@ STRUCTURE:
 6. Reference Documents
 EOF
           )
-
           ALL_DOCS_GENERATED=false
 
           find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u | while read IFLOW_DIR; do
