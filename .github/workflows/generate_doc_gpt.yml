@@ -1,148 +1,149 @@
-name: 🤖 Generation Individual iFlow Documentation
- 
+name: 🤖 Generate Individual iFlow Documentation (DOCX)
+
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Integration Package (e.g., 'PDFcoveter')."
+        description: "CPI Integration Package ID (e.g. Employedata)"
         required: true
         type: string
- 
+
 jobs:
   document:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
- 
-      - name: Install Dependencies (jq only)
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq
- 
-      - name: Generate Individual iFlow Documentation via OpenAI API
+          sudo apt-get install -y jq pandoc
+
+      - name: Generate iFlow Documentation (HTML → DOCX)
         id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
           HEADING_COLOR: "#1f4e79"
         run: |
-          # --- Configuration ---
+          set -e
+
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
+
           if [ ! -d "$BASE_PKG_DIR" ]; then
-            echo "::error::Package directory not found at: $BASE_PKG_DIR"
+            echo "::error::Package directory not found: $BASE_PKG_DIR"
             exit 1
           fi
- 
-         SYSTEM_PROMPT=$(cat <<EOF
-You are a senior SAP CPI Technical Architect.
 
-CRITICAL CONTENT REQUIREMENTS:
-1. 1.1 Purpose – Explain the business problem and trigger.
-2. 1.2 Scope – Endpoints, transformations, and target systems.
-3. 2.2 Integration Components – Adapters, scripts, content modifiers.
-4. 3.1 Scenario Description – Step-by-step flow.
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect.
+          Generate a detailed Technical Specification document strictly based on the provided artifacts.
 
-FORMATTING RULES:
-- Use HTML headings and tables.
-- Separate sections with blank lines.
+          FORMATTING RULES:
+          - Use HTML headings only
+          - All headings must be in color ${HEADING_COLOR}
+          - Use tables where applicable
+          - Insert page breaks where specified
 
-REQUIRED STRUCTURE:
+          STRUCTURE:
+          1. Introduction
+          2. Integration Overview
+          3. Integration Scenarios
+          4. Error Handling and Logging
+          5. Testing Validation
+          6. Reference Documents
+          "
 
-<h1 style="color: ${HEADING_COLOR}; font-size: 2.5em;">Table of Contents</h1>
-
-1. Introduction<br/>
-&nbsp;&nbsp;1.1 Purpose<br/>
-&nbsp;&nbsp;1.2 Scope<br/>
-2. Integration Overview<br/>
-&nbsp;&nbsp;2.1 Integration Architecture<br/>
-&nbsp;&nbsp;2.2 Integration Components<br/>
-3. Integration Scenarios<br/>
-4. Error Handling and Logging<br/>
-5. Testing Validation<br/>
-6. Reference Documents<br/>
-
----TOC-END-PAGE-BREAK---
-
-<h1 style="color: ${HEADING_COLOR};">1. Introduction</h1>
-<b style="color: ${HEADING_COLOR};">1.1 Purpose</b>
-
-<h1 style="color: ${HEADING_COLOR};">2. Integration Overview</h1>
-
-<h1 style="color: ${HEADING_COLOR};">3. Integration Scenarios</h1>
-
-<h1 style="color: ${HEADING_COLOR};">4. Error Handling and Logging</h1>
-
-<h1 style="color: ${HEADING_COLOR};">5. Testing Validation</h1>
-
-<h1 style="color: ${HEADING_COLOR};">6. Reference Documents</h1>
-EOF
-)
-
- 
           ALL_DOCS_GENERATED=false
-          while IFS= read -r IFLOW_DIR; do
-            IFLOW_ROOT_NAME=$(echo "$IFLOW_DIR" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1)
-            FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
-            OUTPUT_FILE="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Summary.md"
-            EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
-            IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
- 
-            QUERY_FILE="user_query.tmp"
-            echo -e "Generate report for iFlow '$IFLOW_ROOT_NAME'.\n" > "$QUERY_FILE"
-            while IFS= read -r -d '' INPUT_FILE; do
-              echo -e "\n--- ARTIFACT: $INPUT_FILE ---\n" >> "$QUERY_FILE"
-              cat "$INPUT_FILE" >> "$QUERY_FILE"
-            done < <(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print0)
- 
-            PAYLOAD_FILE="payload.json"
-            jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
-              '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > "$PAYLOAD_FILE"
- 
-            API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @"$PAYLOAD_FILE")
-            GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
-            if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
-              GENERATED_TEXT_CLEANED=$(echo -e "$GENERATED_TEXT" | sed -E '1s/^\s*```(markdown|text)?//' | sed -E '$s/\s*```\s*$//')
-              AUTHOR=$(git log -1 --pretty=format:'%an')
-              DATE=$(date +'%Y-%m-%d')
-              CLEAN_NAME=$(echo "$IFLOW_ROOT_NAME" | sed 's/_/ /g')
- 
-              SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-              MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-              # MODIFIED: SAP Logo reduced to 140px
-              LOGO_HEADER="<div style=\"width:100%; height: 60px; margin-bottom: 20px;\"><div style=\"float: left;\"><img src=\"$SAP_LOGO\" style=\"width: 140px; height: auto;\"/></div><div style=\"float: right;\"><img src=\"$MM_LOGO\" style=\"width: 150px; height: auto;\"/></div><div style=\"clear: both;\"></div></div>"
-              # MODIFIED: Width set to 98% and box-sizing added to fix missing right border
-              GLOBAL_STYLE="<style>table { width: 98% !important; border-collapse: collapse !important; border: 1px solid #000 !important; margin-bottom: 20px; table-layout: fixed; box-sizing: border-box; } th, td { border: 1px solid #000 !important; padding: 10px !important; text-align: left; word-wrap: break-word; } th { background-color: #f2f2f2; font-weight: bold; }</style>"
- 
-              COVER_PAGE="${LOGO_HEADER}<div style=\"height: 120px;\"></div><h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: center; font-size: 3.5em; margin-bottom: 10px;\">$CLEAN_NAME</h1>"
-              COVER_PAGE+="<h2 style=\"text-align: center; font-size: 1.8em; font-weight: normal; margin-top: 0;\">Technical Specification Document</h2>"
-              COVER_PAGE+="<div style=\"height: 150px;\"></div><div style=\"text-align: center;\">"
-              COVER_PAGE+="<table style=\"width: 60%; margin: 0 auto;\">"
-              COVER_PAGE+="<tr><th>Author</th><td>$AUTHOR</td></tr>"
-              COVER_PAGE+="<tr><th>Date</th><td>$DATE</td></tr>"
-              COVER_PAGE+="<tr><th>Version</th><td>$IFLOW_VERSION</td></tr>"
-              COVER_PAGE+="</table></div>"
- 
-              FINAL_DOC="${GLOBAL_STYLE}${COVER_PAGE}<div style=\"page-break-after: always;\"></div>\n\n${LOGO_HEADER}\n${GENERATED_TEXT_CLEANED}"
-              SECTION_BREAK="\n<div style=\"page-break-before: always;\"></div>\n${LOGO_HEADER}\n"
-              FINAL_DOC=$(echo -e "$FINAL_DOC" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$SECTION_BREAK" | sed 's/[&/]/\\&/g')|g")
-              echo -e "$FINAL_DOC" > "$OUTPUT_FILE"
-              ALL_DOCS_GENERATED=true
+
+          find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u | while read IFLOW_DIR; do
+            IFLOW_NAME=$(basename "$IFLOW_DIR")
+            OUTPUT_HTML="$IFLOW_DIR/${IFLOW_NAME}_Summary.html"
+            OUTPUT_DOCX="$IFLOW_DIR/${IFLOW_NAME}_Summary.docx"
+
+            QUERY_FILE=$(mktemp)
+            echo "Generate documentation for iFlow: $IFLOW_NAME" > "$QUERY_FILE"
+
+            find "$IFLOW_DIR" -type f \( -name '*.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print0 | while IFS= read -r -d '' f; do
+              echo -e "\n--- FILE: $f ---\n" >> "$QUERY_FILE"
+              cat "$f" >> "$QUERY_FILE"
+            done
+
+            PAYLOAD=$(jq -n \
+              --arg system "$SYSTEM_PROMPT" \
+              --rawfile user "$QUERY_FILE" \
+              --arg model "$MODEL_NAME" \
+              '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$user}],temperature:0.1}')
+
+            RESPONSE=$(curl -s -X POST "$API_URL" \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD")
+
+            CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+
+            if [ -z "$CONTENT" ] || [ "$CONTENT" = "null" ]; then
+              echo "⚠️ Skipped $IFLOW_NAME"
+              continue
             fi
-            rm -f "$QUERY_FILE" "$PAYLOAD_FILE"
-          done < <(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u)
+
+            AUTHOR=$(git log -1 --pretty=format:'%an')
+            DATE=$(date +'%Y-%m-%d')
+
+            cat <<EOF > "$OUTPUT_HTML"
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body { font-family: Arial, sans-serif; }
+h1, h2 { color: ${HEADING_COLOR}; }
+table { width:100%; border-collapse: collapse; }
+th, td { border:1px solid #000; padding:8px; }
+.page-break { page-break-before: always; }
+.header { display:flex; justify-content:space-between; align-items:center; }
+.header img { height:60px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <img src="../../../tools/logos/sap.png" alt="SAP Logo">
+  <img src="../../../tools/logos/motiveminds.png" alt="MotiveMinds Logo">
+</div>
+
+<h1 style="text-align:center">$IFLOW_NAME</h1>
+<h2 style="text-align:center">Technical Specification Document</h2>
+
+<table style="width:60%; margin:auto">
+<tr><th>Author</th><td>$AUTHOR</td></tr>
+<tr><th>Date</th><td>$DATE</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+$CONTENT
+
+</body>
+</html>
+EOF
+
+            pandoc "$OUTPUT_HTML" -o "$OUTPUT_DOCX"
+            rm "$QUERY_FILE"
+            ALL_DOCS_GENERATED=true
+          done
+
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
- 
-      - name: Commit and Push Documentation
+
+      - name: Commit and Push DOCX
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          PKG_ID="${{ github.event.inputs.package_id }}"
-          git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          git commit -m "🤖 DOCS: Fixed table borders and logo sizing for $PKG_ID"
+          git add cpi-artifacts/**/*.docx
+          git commit -m "🤖 DOCS: Generate iFlow Technical Specification (DOCX)"
           git push
