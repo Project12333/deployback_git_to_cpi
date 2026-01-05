@@ -16,20 +16,62 @@ jobs:
       contents: write
 
     steps:
+      # -------------------------------------------------
+      # 1. Checkout Repository
+      # -------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -------------------------------------------------
+      # 2. Install Dependencies
+      # -------------------------------------------------
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          # Ubuntu 24.04 (Noble) compatible dependencies for Mermaid CLI
           sudo apt-get install -y \
-            jq pandoc \
+            jq pandoc python3-pip \
             libgbm1 libasound2t64 libnss3 libxss1 \
             libatk-bridge2.0-0 libgtk-3-0
 
+          pip3 install python-docx
           npm install -g @mermaid-js/mermaid-cli
 
+      # -------------------------------------------------
+      # 3. AUTO-CREATE reference.docx WITH HEADER LOGOS
+      # -------------------------------------------------
+      - name: Create Word reference.docx with SAP & MotiveMinds logos
+        run: |
+          python3 - <<'EOF'
+          from docx import Document
+          from docx.shared import Cm
+          from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+          doc = Document()
+          section = doc.sections[0]
+          header = section.header
+
+          table = header.add_table(rows=1, cols=2)
+          table.autofit = False
+
+          # SAP Logo (Left)
+          left_para = table.cell(0, 0).paragraphs[0]
+          left_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+          left_run = left_para.add_run()
+          left_run.add_picture("tools/logos/sap.png", width=Cm(3.5))
+
+          # MotiveMinds Logo (Right)
+          right_para = table.cell(0, 1).paragraphs[0]
+          right_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+          right_run = right_para.add_run()
+          right_run.add_picture("tools/logos/motiveminds.png", width=Cm(4.5))
+
+          # Save reference.docx
+          doc.save("tools/reference.docx")
+          EOF
+
+      # -------------------------------------------------
+      # 4. Generate iFlow Documentation
+      # -------------------------------------------------
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
@@ -39,50 +81,31 @@ jobs:
         run: |
           set -e
 
-          # --- Configuration ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
           if [ ! -d "$BASE_PKG_DIR" ]; then
-            echo "::error::Package directory not found: $BASE_PKG_DIR"
+            echo "::error::Package directory not found"
             exit 1
           fi
 
-          # --- SYSTEM PROMPT ---
           SYSTEM_PROMPT=$(cat <<EOF
-          You are a senior SAP CPI Technical Architect. Your goal is to produce a high-quality, comprehensive Technical Specification Document.
-
-          **CRITICAL CONTENT REQUIREMENTS:**
-          1. **1.1 Purpose (Expanded):** Analyze XML/Groovy files to explain the exact business problem, trigger, and outcome.
-          2. **1.2 Scope (Expanded):** Detail inclusions, exclusions, endpoints, transformations, and constraints.
-          3. **2.2 Integration Components:** Describe every adapter, script, and content modifier.
-          4. **3.1 Scenario Description:** Step-by-step message lifecycle.
-
-          **FORMATTING RULES:**
-          - All headings use color '${HEADING_COLOR}'
-          - Headings left-aligned
-          - Subheadings wrapped in <b style="color:${HEADING_COLOR};">
-          - Markdown tables only
-          - Mermaid diagram required for section 2.1
-
-          **REQUIRED STRUCTURE:**
-          [FULL STRUCTURE EXACTLY AS PROVIDED BY USER]
+          You are a senior SAP CPI Technical Architect.
+          Generate a comprehensive Technical Specification Document
+          based on the provided CPI iFlow artifacts.
           EOF
           )
 
           ALL_DOCS_GENERATED=false
 
           while IFS= read -r IFLOW_DIR; do
-            IFLOW_ROOT_NAME=$(basename "$IFLOW_DIR")
-            OUTPUT_DOCX="$IFLOW_DIR/${IFLOW_ROOT_NAME}_Technical_Specification.docx"
-            TEMP_MD="word_content.md"
+            IFLOW_NAME=$(basename "$IFLOW_DIR")
+            OUTPUT_DOCX="$IFLOW_DIR/${IFLOW_NAME}_Technical_Specification.docx"
+            TEMP_MD="content.md"
 
-            EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
-            IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
-
-            QUERY_FILE="user_query.tmp"
-            echo "Generate report for iFlow '$IFLOW_ROOT_NAME'" > "$QUERY_FILE"
+            QUERY_FILE="query.tmp"
+            echo "Generate documentation for iFlow '$IFLOW_NAME'" > "$QUERY_FILE"
 
             find "$IFLOW_DIR" -type f \( \
               -name 'iFlowContent.xml' -o \
@@ -95,58 +118,41 @@ jobs:
               --arg system "$SYSTEM_PROMPT" \
               --rawfile query "$QUERY_FILE" \
               --arg model "$MODEL_NAME" \
-              '{model: $model, messages: [{role:"system",content:$system},{role:"user",content:$query}], temperature:0.1}' \
+              '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$query}],temperature:0.1}' \
               > payload.json
 
-            API_RESPONSE=$(curl -s -X POST "$API_URL" \
+            RESPONSE=$(curl -s -X POST "$API_URL" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $OPENAI_API_KEY" \
               -d @payload.json)
 
-            GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r '.choices[0].message.content // empty')
+            CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
 
-            if [ -z "$GENERATED_TEXT" ]; then
+            if [ -z "$CONTENT" ]; then
               continue
             fi
 
-            # --- Mermaid Rendering ---
-            echo "$GENERATED_TEXT" | sed -n '/```mermaid/,/```/p' | sed 's/```mermaid//g;s/```//g' > architecture.mmd
+            echo "$CONTENT" > "$TEMP_MD"
 
-            if [ -s architecture.mmd ]; then
-              echo '{"args":["--no-sandbox","--disable-setuid-sandbox"]}' > puppeteer.json
-              mmdc -p puppeteer.json -i architecture.mmd -o architecture.png -b transparent -w 1200
-              GENERATED_TEXT=$(echo "$GENERATED_TEXT" | sed '/```mermaid/,/```/c\![Integration Architecture](architecture.png)')
-            fi
+            # 🔑 IMPORTANT: reference.docx ensures logos on EVERY PAGE
+            pandoc "$TEMP_MD" \
+              --reference-doc=tools/reference.docx \
+              -o "$OUTPUT_DOCX"
 
-            AUTHOR=$(git log -1 --pretty=format:'%an')
-            DATE=$(date +'%Y-%m-%d')
-
-            SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-            MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-
-            LOGO_HEADER="<div><img src='$SAP_LOGO' width='120'/><img src='$MM_LOGO' width='150' style='float:right'/></div>"
-            PAGE_BREAK="<div style='page-break-after:always;'></div>"
-
-            FINAL_MD="${LOGO_HEADER}
-            <h1>${IFLOW_ROOT_NAME}</h1>
-            ${PAGE_BREAK}
-            ${LOGO_HEADER}
-            ${GENERATED_TEXT}"
-
-            echo "$FINAL_MD" > "$TEMP_MD"
-            pandoc "$TEMP_MD" -o "$OUTPUT_DOCX"
-
-            rm -f "$TEMP_MD" architecture.mmd architecture.png puppeteer.json payload.json "$QUERY_FILE"
+            rm -f "$TEMP_MD" payload.json "$QUERY_FILE"
             ALL_DOCS_GENERATED=true
           done < <(find "$BASE_PKG_DIR" -type f \( -name '*.iflw' -o -name 'iFlowContent.xml' \) -printf '%h\n' | sort -u)
 
           echo "docs_generated=$ALL_DOCS_GENERATED" >> "$GITHUB_OUTPUT"
 
+      # -------------------------------------------------
+      # 5. Commit and Push Generated Docs
+      # -------------------------------------------------
       - name: Commit and Push
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Generated Word technical specs with diagrams"
+          git commit -m "🤖 DOCS: Auto-generated Word docs with header logos"
           git push
