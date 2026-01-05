@@ -37,7 +37,7 @@ jobs:
           npm install -g @mermaid-js/mermaid-cli
 
       # -------------------------------------------------
-      # 3. AUTO-CREATE reference.docx WITH HEADER LOGOS
+      # 3. Create reference.docx with header logos
       # -------------------------------------------------
       - name: Create Word reference.docx with SAP & MotiveMinds logos
         run: |
@@ -79,62 +79,35 @@ jobs:
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
-          # -------------------------------------------------
-          # STRICT TOC-DRIVEN SYSTEM PROMPT
-          # -------------------------------------------------
+          # STRICT TOC-CONTROLLED PROMPT
           SYSTEM_PROMPT=$(cat <<'PROMPT'
           You are a senior SAP CPI Technical Architect.
 
-          CRITICAL INSTRUCTION:
-          You MUST generate the document using ONLY the following structure and headings.
-          Do NOT add, remove, rename, or reorder any section.
-          Do NOT introduce any additional headings or summaries.
+          Generate documentation using ONLY the following structure.
+          Do NOT add extra sections.
 
-          MANDATORY DOCUMENT STRUCTURE (USE EXACTLY):
+          # 1. Introduction
+          ## 1.1 Purpose
+          ## 1.2 Scope
 
-          1. Introduction
+          # 2. Integration Overview
+          ## 2.1 Integration Architecture
+          ## 2.2 Integration Components
 
-          1.1 Purpose
-          - Explain the specific business purpose of this iFlow.
-          - Base the explanation strictly on the provided CPI artifacts.
+          # 3. Integration Scenarios
+          ## 3.1 Scenario Description
+          ## 3.2 Data Flows
+          ## 3.3 Security Requirements
 
-          1.2 Scope
-          - Clearly state what is included and excluded.
-          - Mention systems, adapters, and integration boundaries.
+          # 4. Error Handling and Logging
 
-          2. Integration Overview
+          # 5. Testing Validation
+          Use a table:
+          | Test Case ID | Scenario | Expected Outcome |
 
-          2.1 Integration Architecture
-          - Describe the end-to-end architecture.
+          # 6. Reference Documents
 
-          2.2 Integration Components
-          - List and explain adapters, scripts, content modifiers, mappings.
-
-          3. Integration Scenarios
-
-          3.1 Scenario Description
-          - Provide a step-by-step integration flow description.
-
-          3.2 Data Flows
-          - Explain message flow, transformation, and routing logic.
-
-          3.3 Security Requirements
-          - Describe authentication, authorization, and credentials.
-
-          4. Error Handling and Logging
-          - Describe error handling and logging strategy.
-
-          5. Testing Validation
-          - Provide test cases in table format:
-            | Test Case ID | Scenario | Expected Outcome |
-
-          6. Reference Documents
-          - Mention CPI package, iFlow name, and related references.
-
-          STRICT RULES:
-          - Start directly from "1. Introduction".
-          - Use exact numbering and headings.
-          - Output must be valid Markdown only.
+          Output must be valid Markdown.
           PROMPT
           )
 
@@ -175,7 +148,7 @@ jobs:
             [ -z "$CONTENT" ] && continue
 
             # -------------------------------------------------
-            # COVER PAGE + TOC + GENERATED CONTENT
+            # COVER PAGE + TOC + CONTENT
             # -------------------------------------------------
             printf '%s\n' \
             '<div style="page-break-after: always; text-align: center; margin-top: 200px;">' \
@@ -192,17 +165,17 @@ jobs:
             '<div style="page-break-after: always;">' \
             '<h1 style="color:#1f4e79;">Table of Contents</h1>' \
             '1. Introduction' \
-            '  1.1 Purpose' \
-            '  1.2 Scope' \
+            '   1.1 Purpose' \
+            '   1.2 Scope' \
             '' \
             '2. Integration Overview' \
-            '  2.1 Integration Architecture' \
-            '  2.2 Integration Components' \
+            '   2.1 Integration Architecture' \
+            '   2.2 Integration Components' \
             '' \
             '3. Integration Scenarios' \
-            '  3.1 Scenario Description' \
-            '  3.2 Data Flows' \
-            '  3.3 Security Requirements' \
+            '   3.1 Scenario Description' \
+            '   3.2 Data Flows' \
+            '   3.3 Security Requirements' \
             '' \
             '4. Error Handling and Logging' \
             '' \
@@ -210,6 +183,8 @@ jobs:
             '' \
             '6. Reference Documents' \
             '</div>' \
+            '' \
+            '<div style="page-break-after: always;"></div>' \
             '' \
             "${CONTENT}" \
             > "$TEMP_MD"
@@ -233,5 +208,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: TOC-driven CPI Technical Specification"
+          git commit -m "🤖 DOCS: Proper Cover + TOC + Structured Content"
           git push
