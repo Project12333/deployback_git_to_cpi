@@ -50,22 +50,22 @@ jobs:
           section = doc.sections[0]
           header = section.header
 
-          table = header.add_table(rows=1, cols=2)
+          # ✅ FIX: width is mandatory
+          table = header.add_table(rows=1, cols=2, width=Cm(16))
           table.autofit = False
 
-          # SAP Logo (Left)
+          # SAP logo (left)
           left_para = table.cell(0, 0).paragraphs[0]
           left_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
           left_run = left_para.add_run()
           left_run.add_picture("tools/logos/sap.png", width=Cm(3.5))
 
-          # MotiveMinds Logo (Right)
+          # MotiveMinds logo (right)
           right_para = table.cell(0, 1).paragraphs[0]
           right_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
           right_run = right_para.add_run()
           right_run.add_picture("tools/logos/motiveminds.png", width=Cm(4.5))
 
-          # Save reference.docx
           doc.save("tools/reference.docx")
           EOF
 
@@ -90,12 +90,7 @@ jobs:
             exit 1
           fi
 
-          SYSTEM_PROMPT=$(cat <<EOF
-          You are a senior SAP CPI Technical Architect.
-          Generate a comprehensive Technical Specification Document
-          based on the provided CPI iFlow artifacts.
-          EOF
-          )
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect."
 
           ALL_DOCS_GENERATED=false
 
@@ -128,13 +123,11 @@ jobs:
 
             CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
 
-            if [ -z "$CONTENT" ]; then
-              continue
-            fi
+            [ -z "$CONTENT" ] && continue
 
             echo "$CONTENT" > "$TEMP_MD"
 
-            # 🔑 IMPORTANT: reference.docx ensures logos on EVERY PAGE
+            # ✅ Logos repeat on EVERY PAGE
             pandoc "$TEMP_MD" \
               --reference-doc=tools/reference.docx \
               -o "$OUTPUT_DOCX"
@@ -146,7 +139,7 @@ jobs:
           echo "docs_generated=$ALL_DOCS_GENERATED" >> "$GITHUB_OUTPUT"
 
       # -------------------------------------------------
-      # 5. Commit and Push Generated Docs
+      # 5. Commit and Push
       # -------------------------------------------------
       - name: Commit and Push
         if: steps.documentation_step.outputs.docs_generated == 'true'
@@ -154,5 +147,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Auto-generated Word docs with header logos"
+          git commit -m "🤖 DOCS: Word docs with header logos"
           git push
