@@ -1,10 +1,10 @@
-name: 🤖 Generate Individual iFlow Documentation
+name: 🤖 Generate Individual iFlow DOCX Documentation
 
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Integration Package (e.g., 'PDFconverter')"
+        description: "CPI Integration Package ID (e.g. Employedata)"
         required: true
         type: string
 
@@ -18,114 +18,139 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Dependencies (jq + pandoc)
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq python3 python3-pip
-          pip3 install python-docx
+          sudo apt-get install -y jq pandoc
 
-                 - name: Generate iFlow Documentation
+      - name: Generate DOCX Documentation
+        id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
+          HEADING_COLOR: "#1f4e79"
         run: |
           set -e
 
-          SYSTEM_PROMPT=$(cat <<'EOF'
-You are a senior SAP CPI Technical Architect. Your task is to analyze the provided artifacts and create a professional SAP CPI Technical Specification document.
+          API_URL="https://api.openai.com/v1/chat/completions"
+          MODEL_NAME="gpt-4o-mini"
+          BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
-CRITICAL FORMATTING INSTRUCTIONS:
-1. COLOR SCHEME: All headings must use the defined heading color
-2. HEADINGS: Use inline HTML for H1 and H2
-3. SUBHEADINGS: Wrap subheadings like:
-   <b style="color: #1f4e79;">1.1 Purpose</b>
-4. FORCE NEW LINE: Content must start on a new line after 1.1 and 1.2
-5. NO CLUMPING: Separate sections with blank lines
-6. TESTING VALIDATION: Section 5 must include a table:
-   | Test Case ID | Scenario | Expected Outcome |
+          if [ ! -d "$BASE_PKG_DIR" ]; then
+            echo "::error::Package not found: $BASE_PKG_DIR"
+            exit 1
+          fi
 
-REQUIRED STRUCTURE:
+          # ---- SYSTEM PROMPT ----
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect.
+Generate a complete SAP CPI Technical Specification document using the structure provided.
+Use proper headings, tables, and detailed explanations derived strictly from the given artifacts."
 
-<h1 style="color: #1f4e79; font-size: 2.5em;">Table of Contents</h1>
-1. Introduction <br>
-&nbsp;&nbsp;1.1 Purpose <br>
-&nbsp;&nbsp;1.2 Scope <br>
-2. Integration Overview <br>
-&nbsp;&nbsp;2.1 Integration Architecture <br>
-&nbsp;&nbsp;2.2 Integration Components <br>
-3. Integration Scenarios <br>
-&nbsp;&nbsp;3.1 Scenario Description <br>
-&nbsp;&nbsp;3.2 Data Flows <br>
-&nbsp;&nbsp;3.3 Security Requirements <br>
-4. Error Handling and Logging <br>
-5. Testing Validation <br>
-6. Reference Documents <br>
+          DOCS_GENERATED=false
 
----TOC-END-PAGE-BREAK---
-
-<h1 style="color: #1f4e79;">1. Introduction</h1>
-<b style="color: #1f4e79;">1.1 Purpose</b>
-<b style="color: #1f4e79;">1.2 Scope</b>
-
-<h1 style="color: #1f4e79;">2. Integration Overview</h1>
-<b style="color: #1f4e79;">2.1 Integration Architecture</b>
-<b style="color: #1f4e79;">2.2 Integration Components</b>
-
-<h1 style="color: #1f4e79;">3. Integration Scenarios</h1>
-<b style="color: #1f4e79;">3.1 Scenario Description</b>
-<b style="color: #1f4e79;">3.2 Data Flows</b>
-<b style="color: #1f4e79;">3.3 Security Requirements</b>
-
-<h1 style="color: #1f4e79;">4. Error Handling and Logging</h1>
-<h1 style="color: #1f4e79;">5. Testing Validation</h1>
-<h1 style="color: #1f4e79;">6. Reference Documents</h1>
-EOF
-)
-
-          echo "SYSTEM PROMPT LOADED SUCCESSFULLY"
-
-          # ---------------- PROCESS EACH IFLOW ----------------
-          while IFS= read -r IFLOW_DIR; do
+          find "$BASE_PKG_DIR" -type f \( -name '*.iflw' -o -name 'iFlowContent.xml' \) -printf '%h\n' | sort -u | while read IFLOW_DIR; do
             IFLOW_NAME=$(basename "$IFLOW_DIR")
-            TMP_TXT="/tmp/${IFLOW_NAME}_content.txt"
-            OUTPUT_DOC="${IFLOW_DIR}/${IFLOW_NAME}_Summary.docx"
+            OUTPUT_DOCX="$IFLOW_DIR/${IFLOW_NAME}_Technical_Specification.docx"
 
-            echo "Generating documentation for $IFLOW_NAME"
+            echo "➡ Processing iFlow: $IFLOW_NAME"
 
-            echo "Analyze the following CPI artifacts:" > "$TMP_TXT"
-            find "$IFLOW_DIR" -type f \( -name '*.xml' -o -name '*.groovy' -o -name '*.iflw' \) \
-              -exec cat {} \; >> "$TMP_TXT"
+            QUERY_FILE="query.txt"
+            echo "Generate technical documentation for iFlow '$IFLOW_NAME'." > "$QUERY_FILE"
+
+            find "$IFLOW_DIR" -type f \( -name '*.iflw' -o -name '*.groovy' -o -name '*.xslt' -o -name 'iFlowContent.xml' \) -print0 |
+            while IFS= read -r -d '' FILE; do
+              echo -e "\n--- FILE: $FILE ---\n" >> "$QUERY_FILE"
+              cat "$FILE" >> "$QUERY_FILE"
+            done
 
             jq -n \
-              --arg model "$MODEL" \
+              --arg model "$MODEL_NAME" \
               --arg system "$SYSTEM_PROMPT" \
-              --rawfile user "$TMP_TXT" \
-              '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$user}],temperature:0.1}' \
-              > payload.json
+              --rawfile user "$QUERY_FILE" \
+              '{
+                model: $model,
+                messages: [
+                  {role: "system", content: $system},
+                  {role: "user", content: $user}
+                ],
+                temperature: 0.1
+              }' > payload.json
 
             RESPONSE=$(curl -s -X POST "$API_URL" \
-              -H "Authorization: Bearer $OPENAI_API_KEY" \
               -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
               -d @payload.json)
 
-            echo "$RESPONSE" | jq -r '.choices[0].message.content' > "$TMP_TXT"
+            CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
 
-            AUTHOR=$(git log -1 --pretty=format:'%an')
-            VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1 || echo "1.0.0")
+            if [ -z "$CONTENT" ]; then
+              echo "⚠️ No content generated for $IFLOW_NAME"
+              continue
+            fi
 
-            python3 tools/generate_docx.py \
-              "$TMP_TXT" \
-              "$OUTPUT_DOC" \
-              "$IFLOW_NAME" \
-              "$AUTHOR" \
-              "$VERSION"
+            # ---- Logos (LOCAL PATHS) ----
+            SAP_LOGO="../../../tools/logos/sap.png"
+            MM_LOGO="../../../tools/logos/motiveminds.png"
 
-          done < <(find "$BASE_DIR" -type f -name '*.iflw' -printf '%h\n' | sort -u)
+            HTML_FILE="doc.html"
 
-      - name: Commit and push documents
+            cat > "$HTML_FILE" <<EOF
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body { font-family: Arial, sans-serif; }
+h1, h2, h3 { color: ${HEADING_COLOR}; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid black; padding: 8px; }
+th { background: #f2f2f2; }
+.header { width:100%; }
+.header img { height:60px; }
+.header-left { float:left; }
+.header-right { float:right; }
+.clear { clear:both; }
+.pagebreak { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <img src="$SAP_LOGO">
+  </div>
+  <div class="header-right">
+    <img src="$MM_LOGO">
+  </div>
+  <div class="clear"></div>
+</div>
+
+<h1 style="text-align:center;">$IFLOW_NAME</h1>
+<h2 style="text-align:center;">Technical Specification Document</h2>
+
+<div class="pagebreak"></div>
+
+$CONTENT
+
+</body>
+</html>
+EOF
+
+            pandoc "$HTML_FILE" -o "$OUTPUT_DOCX"
+            echo "✅ Generated: $OUTPUT_DOCX"
+
+            DOCS_GENERATED=true
+
+            rm -f payload.json "$QUERY_FILE" "$HTML_FILE"
+          done
+
+          echo "docs_generated=$DOCS_GENERATED" >> $GITHUB_OUTPUT
+
+      - name: Commit and Push DOCX
+        if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add cpi-artifacts/**/_Summary.docx
-          git commit -m "🤖 DOCS: Generate DOCX iFlow documentation" || echo "No changes to commit"
+          git add cpi-artifacts/**/**.docx
+          git commit -m "🤖 DOCS: Generated CPI iFlow Technical Specification (DOCX)"
           git push
