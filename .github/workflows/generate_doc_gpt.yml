@@ -40,10 +40,9 @@ jobs:
             echo "::error::Package directory not found: $BASE_PKG_DIR"
             exit 1
           fi
-
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect.
+          SYSTEM_PROMPT=$(cat <<'EOF'
+          You are a senior SAP CPI Technical Architect.
           Generate a detailed Technical Specification document strictly based on the provided artifacts.
-
           FORMATTING RULES:
           - Use HTML headings only
           - All headings must be in color ${HEADING_COLOR}
