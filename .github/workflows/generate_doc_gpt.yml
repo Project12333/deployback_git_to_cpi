@@ -28,28 +28,28 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
-          HEADING_COLOR: "#1f4e79"
         run: |
           set -e
 
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
+          HEADING_COLOR="#1f4e79"
 
           if [ ! -d "$BASE_PKG_DIR" ]; then
             echo "::error::Package directory not found: $BASE_PKG_DIR"
             exit 1
           fi
 
+          # ---------------- SYSTEM PROMPT (SAFE HEREDOC) ----------------
           SYSTEM_PROMPT=$(cat <<'EOF'
 You are a senior SAP CPI Technical Architect.
 Generate a detailed Technical Specification document strictly based on the provided artifacts.
 
 FORMATTING RULES:
 - Use HTML headings only
-- All headings must be in color #1f4e79
-- Use tables where applicable
-- Insert page breaks where specified
+- Use tables for structured content
+- Insert clear section separation
 
 STRUCTURE:
 1. Introduction
@@ -60,6 +60,7 @@ STRUCTURE:
 6. Reference Documents
 EOF
           )
+
           ALL_DOCS_GENERATED=false
 
           find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u | while read IFLOW_DIR; do
@@ -76,9 +77,9 @@ EOF
             done
 
             PAYLOAD=$(jq -n \
+              --arg model "$MODEL_NAME" \
               --arg system "$SYSTEM_PROMPT" \
               --rawfile user "$QUERY_FILE" \
-              --arg model "$MODEL_NAME" \
               '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$user}],temperature:0.1}')
 
             RESPONSE=$(curl -s -X POST "$API_URL" \
@@ -89,13 +90,14 @@ EOF
             CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
 
             if [ -z "$CONTENT" ] || [ "$CONTENT" = "null" ]; then
-              echo "⚠️ Skipped $IFLOW_NAME"
+              echo "⚠️ Skipping $IFLOW_NAME (no content generated)"
               continue
             fi
 
             AUTHOR=$(git log -1 --pretty=format:'%an')
             DATE=$(date +'%Y-%m-%d')
 
+            # ---------------- HTML TEMPLATE (SAFE HEREDOC) ----------------
             cat <<'EOF' > "$OUTPUT_HTML"
 <html>
 <head>
