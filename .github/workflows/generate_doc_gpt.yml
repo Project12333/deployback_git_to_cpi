@@ -40,23 +40,26 @@ jobs:
             echo "::error::Package directory not found: $BASE_PKG_DIR"
             exit 1
           fi
-          SYSTEM_PROMPT=$(cat <<'EOF'
-          You are a senior SAP CPI Technical Architect.
-          Generate a detailed Technical Specification document strictly based on the provided artifacts.
-          FORMATTING RULES:
-          - Use HTML headings only
-          - All headings must be in color ${HEADING_COLOR}
-          - Use tables where applicable
-          - Insert page breaks where specified
 
-          STRUCTURE:
-          1. Introduction
-          2. Integration Overview
-          3. Integration Scenarios
-          4. Error Handling and Logging
-          5. Testing Validation
-          6. Reference Documents
-          "
+          SYSTEM_PROMPT=$(cat <<'EOF'
+You are a senior SAP CPI Technical Architect.
+Generate a detailed Technical Specification document strictly based on the provided artifacts.
+
+FORMATTING RULES:
+- Use HTML headings only
+- All headings must be in color #1f4e79
+- Use tables where applicable
+- Insert page breaks where specified
+
+STRUCTURE:
+1. Introduction
+2. Integration Overview
+3. Integration Scenarios
+4. Error Handling and Logging
+5. Testing Validation
+6. Reference Documents
+EOF
+          )
 
           ALL_DOCS_GENERATED=false
 
@@ -94,13 +97,13 @@ jobs:
             AUTHOR=$(git log -1 --pretty=format:'%an')
             DATE=$(date +'%Y-%m-%d')
 
-            cat <<EOF > "$OUTPUT_HTML"
+            cat <<'EOF' > "$OUTPUT_HTML"
 <html>
 <head>
 <meta charset="UTF-8">
 <style>
 body { font-family: Arial, sans-serif; }
-h1, h2 { color: ${HEADING_COLOR}; }
+h1, h2 { color: #1f4e79; }
 table { width:100%; border-collapse: collapse; }
 th, td { border:1px solid #000; padding:8px; }
 .page-break { page-break-before: always; }
@@ -115,23 +118,29 @@ th, td { border:1px solid #000; padding:8px; }
   <img src="../../../tools/logos/motiveminds.png" alt="MotiveMinds Logo">
 </div>
 
-<h1 style="text-align:center">$IFLOW_NAME</h1>
+<h1 style="text-align:center">IFLOW_NAME_PLACEHOLDER</h1>
 <h2 style="text-align:center">Technical Specification Document</h2>
 
 <table style="width:60%; margin:auto">
-<tr><th>Author</th><td>$AUTHOR</td></tr>
-<tr><th>Date</th><td>$DATE</td></tr>
+<tr><th>Author</th><td>AUTHOR_PLACEHOLDER</td></tr>
+<tr><th>Date</th><td>DATE_PLACEHOLDER</td></tr>
 </table>
 
 <div class="page-break"></div>
 
-$CONTENT
+CONTENT_PLACEHOLDER
 
 </body>
 </html>
 EOF
 
+            sed -i "s/IFLOW_NAME_PLACEHOLDER/$IFLOW_NAME/g" "$OUTPUT_HTML"
+            sed -i "s/AUTHOR_PLACEHOLDER/$AUTHOR/g" "$OUTPUT_HTML"
+            sed -i "s/DATE_PLACEHOLDER/$DATE/g" "$OUTPUT_HTML"
+            sed -i "s|CONTENT_PLACEHOLDER|$CONTENT|g" "$OUTPUT_HTML"
+
             pandoc "$OUTPUT_HTML" -o "$OUTPUT_DOCX"
+
             rm "$QUERY_FILE"
             ALL_DOCS_GENERATED=true
           done
