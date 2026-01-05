@@ -38,54 +38,51 @@ jobs:
             exit 1
           fi
  
-          # --- SYSTEM PROMPT (Optimized for Deep Technical Content) ---
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your goal is to produce a high-quality, comprehensive Technical Specification Document.
-          **CRITICAL CONTENT REQUIREMENTS:**
-          1. **1.1 Purpose (Expanded):** Explain the specific business problem this iFlow solves, the trigger mechanism, and technical outcome based on artifacts.
-          2. **1.2 Scope (Expanded):** Detail endpoints, data transformation logic, and target systems.
-          3. **2.2 Integration Components:** Identify adapters, Scripts, and Content Modifiers. Describe their roles.
-          4. **3.1 Scenario Description:** Provide a step-by-step walkthrough of the integration process.
-          **FORMATTING RULES:**
-          - All Headings (H1/H2) and Subheadings MUST use color '${{ env.HEADING_COLOR }}'.
-          - Subheadings MUST be wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b> followed by a NEW LINE.
-          - Use standard Markdown tables for all structured data.
-          - Separate all sections with double newlines.
- 
-          **REQUIRED STRUCTURE:**
-<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 2.5em;\">Table of Contents</h1>
-          1. Introduction <br>
-&nbsp;&nbsp;&nbsp; 1.1 Purpose <br>
-&nbsp;&nbsp;&nbsp; 1.2 Scope <br>
-          2. Integration Overview <br>
-&nbsp;&nbsp;&nbsp; 2.1 Integration Architecture <br>
-&nbsp;&nbsp;&nbsp; 2.2 Integration Components <br>
-          3. Integration Scenarios <br>
-&nbsp;&nbsp;&nbsp; 3.1 Scenario Description <br>
-&nbsp;&nbsp;&nbsp; 3.2 Data Flows <br>
-&nbsp;&nbsp;&nbsp; 3.3 Security Requirements <br>
-          4. Error Handling and Logging <br>
-          5. Testing Validation <br>
-          6. Reference Documents <br>
-          ---TOC-END-PAGE-BREAK---
-<h1 style=\"color: ${{ env.HEADING_COLOR }};\">1. Introduction</h1>
-<b style=\"color: ${{ env.HEADING_COLOR }};\">1.1 Purpose:</b>
-          [Detailed content]
-<b style=\"color: ${{ env.HEADING_COLOR }};\">1.2 Scope:</b>
-          [Detailed content]
-<h1 style=\"color: ${{ env.HEADING_COLOR }};\">2. Integration Overview</h1>
-<b style=\"color: ${{ env.HEADING_COLOR }};\">2.1 Integration Architecture:</b> (Mermaid graph)
-<b style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components:</b>
-          | Component | Role | Details |
-<h1 style=\"color: ${{ env.HEADING_COLOR }};\">3. Integration Scenarios</h1>
-<b style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description:</b>
-<b style=\"color: ${{ env.HEADING_COLOR }};\">3.2 Data Flows:</b>
-<b style=\"color: ${{ env.HEADING_COLOR }};\">3.3 Security Requirements:</b>
-<h1 style=\"color: ${{ env.HEADING_COLOR }};\">4. Error Handling and Logging</h1>
-<h1 style=\"color: ${{ env.HEADING_COLOR }};\">5. Testing Validation</h1>
-          **Testing Details – Sheet: Testing**
-          | Test Case ID | Scenario | Expected Outcome |
-          | :--- | :--- | :--- |
-<h1 style=\"color: ${{ env.HEADING_COLOR }};\">6. Reference Documents</h1>"
+         SYSTEM_PROMPT=$(cat <<EOF
+You are a senior SAP CPI Technical Architect.
+
+CRITICAL CONTENT REQUIREMENTS:
+1. 1.1 Purpose – Explain the business problem and trigger.
+2. 1.2 Scope – Endpoints, transformations, and target systems.
+3. 2.2 Integration Components – Adapters, scripts, content modifiers.
+4. 3.1 Scenario Description – Step-by-step flow.
+
+FORMATTING RULES:
+- Use HTML headings and tables.
+- Separate sections with blank lines.
+
+REQUIRED STRUCTURE:
+
+<h1 style="color: ${HEADING_COLOR}; font-size: 2.5em;">Table of Contents</h1>
+
+1. Introduction<br/>
+&nbsp;&nbsp;1.1 Purpose<br/>
+&nbsp;&nbsp;1.2 Scope<br/>
+2. Integration Overview<br/>
+&nbsp;&nbsp;2.1 Integration Architecture<br/>
+&nbsp;&nbsp;2.2 Integration Components<br/>
+3. Integration Scenarios<br/>
+4. Error Handling and Logging<br/>
+5. Testing Validation<br/>
+6. Reference Documents<br/>
+
+---TOC-END-PAGE-BREAK---
+
+<h1 style="color: ${HEADING_COLOR};">1. Introduction</h1>
+<b style="color: ${HEADING_COLOR};">1.1 Purpose</b>
+
+<h1 style="color: ${HEADING_COLOR};">2. Integration Overview</h1>
+
+<h1 style="color: ${HEADING_COLOR};">3. Integration Scenarios</h1>
+
+<h1 style="color: ${HEADING_COLOR};">4. Error Handling and Logging</h1>
+
+<h1 style="color: ${HEADING_COLOR};">5. Testing Validation</h1>
+
+<h1 style="color: ${HEADING_COLOR};">6. Reference Documents</h1>
+EOF
+)
+
  
           ALL_DOCS_GENERATED=false
           while IFS= read -r IFLOW_DIR; do
