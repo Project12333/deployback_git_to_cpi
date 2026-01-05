@@ -24,7 +24,6 @@ jobs:
           sudo apt-get install -y jq pandoc
 
       - name: Generate iFlow Documentation (HTML → DOCX)
-        id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
@@ -34,34 +33,17 @@ jobs:
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
-          HEADING_COLOR="#1f4e79"
+          PROMPT_FILE="tools/prompts/prompt.txt"
 
           if [ ! -d "$BASE_PKG_DIR" ]; then
             echo "::error::Package directory not found: $BASE_PKG_DIR"
             exit 1
           fi
 
-          # ---------------- SYSTEM PROMPT (SAFE HEREDOC) ----------------
-          SYSTEM_PROMPT=$(cat <<'EOF'
-You are a senior SAP CPI Technical Architect.
-Generate a detailed Technical Specification document strictly based on the provided artifacts.
-
-FORMATTING RULES:
-- Use HTML headings only
-- Use tables for structured content
-- Insert clear section separation
-
-STRUCTURE:
-1. Introduction
-2. Integration Overview
-3. Integration Scenarios
-4. Error Handling and Logging
-5. Testing Validation
-6. Reference Documents
-EOF
-          )
-
-          ALL_DOCS_GENERATED=false
+          if [ ! -f "$PROMPT_FILE" ]; then
+            echo "::error::Prompt file not found: $PROMPT_FILE"
+            exit 1
+          fi
 
           find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u | while read IFLOW_DIR; do
             IFLOW_NAME=$(basename "$IFLOW_DIR")
@@ -71,15 +53,16 @@ EOF
             QUERY_FILE=$(mktemp)
             echo "Generate documentation for iFlow: $IFLOW_NAME" > "$QUERY_FILE"
 
-            find "$IFLOW_DIR" -type f \( -name '*.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print0 | while IFS= read -r -d '' f; do
+            find "$IFLOW_DIR" -type f \( -name '*.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print0 |
+            while IFS= read -r -d '' f; do
               echo -e "\n--- FILE: $f ---\n" >> "$QUERY_FILE"
               cat "$f" >> "$QUERY_FILE"
             done
 
             PAYLOAD=$(jq -n \
-              --arg model "$MODEL_NAME" \
-              --arg system "$SYSTEM_PROMPT" \
+              --rawfile system "$PROMPT_FILE" \
               --rawfile user "$QUERY_FILE" \
+              --arg model "$MODEL_NAME" \
               '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$user}],temperature:0.1}')
 
             RESPONSE=$(curl -s -X POST "$API_URL" \
@@ -89,70 +72,53 @@ EOF
 
             CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
 
-            if [ -z "$CONTENT" ] || [ "$CONTENT" = "null" ]; then
-              echo "⚠️ Skipping $IFLOW_NAME (no content generated)"
-              continue
-            fi
+            [ -z "$CONTENT" ] && continue
 
             AUTHOR=$(git log -1 --pretty=format:'%an')
             DATE=$(date +'%Y-%m-%d')
 
-            # ---------------- HTML TEMPLATE (SAFE HEREDOC) ----------------
-            cat <<'EOF' > "$OUTPUT_HTML"
-<html>
+            printf '%s\n' \
+"<html>
 <head>
-<meta charset="UTF-8">
+<meta charset='UTF-8'>
 <style>
-body { font-family: Arial, sans-serif; }
-h1, h2 { color: #1f4e79; }
-table { width:100%; border-collapse: collapse; }
-th, td { border:1px solid #000; padding:8px; }
-.page-break { page-break-before: always; }
-.header { display:flex; justify-content:space-between; align-items:center; }
+body { font-family: Arial; }
+h1,h2 { color:#1f4e79; }
+table { width:100%; border-collapse:collapse; }
+th,td { border:1px solid #000; padding:8px; }
+.header { display:flex; justify-content:space-between; }
 .header img { height:60px; }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <img src="../../../tools/logos/sap.png" alt="SAP Logo">
-  <img src="../../../tools/logos/motiveminds.png" alt="MotiveMinds Logo">
+<div class='header'>
+<img src='../../../tools/logos/sap.png'>
+<img src='../../../tools/logos/motiveminds.png'>
 </div>
 
-<h1 style="text-align:center">IFLOW_NAME_PLACEHOLDER</h1>
-<h2 style="text-align:center">Technical Specification Document</h2>
+<h1 style='text-align:center'>$IFLOW_NAME</h1>
+<h2 style='text-align:center'>Technical Specification Document</h2>
 
-<table style="width:60%; margin:auto">
-<tr><th>Author</th><td>AUTHOR_PLACEHOLDER</td></tr>
-<tr><th>Date</th><td>DATE_PLACEHOLDER</td></tr>
+<table style='width:60%; margin:auto'>
+<tr><th>Author</th><td>$AUTHOR</td></tr>
+<tr><th>Date</th><td>$DATE</td></tr>
 </table>
 
-<div class="page-break"></div>
+<hr/>
 
-CONTENT_PLACEHOLDER
+$CONTENT
 
 </body>
-</html>
-EOF
-
-            sed -i "s/IFLOW_NAME_PLACEHOLDER/$IFLOW_NAME/g" "$OUTPUT_HTML"
-            sed -i "s/AUTHOR_PLACEHOLDER/$AUTHOR/g" "$OUTPUT_HTML"
-            sed -i "s/DATE_PLACEHOLDER/$DATE/g" "$OUTPUT_HTML"
-            sed -i "s|CONTENT_PLACEHOLDER|$CONTENT|g" "$OUTPUT_HTML"
+</html>" > "$OUTPUT_HTML"
 
             pandoc "$OUTPUT_HTML" -o "$OUTPUT_DOCX"
-
-            rm "$QUERY_FILE"
-            ALL_DOCS_GENERATED=true
           done
 
-          echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
-
       - name: Commit and Push DOCX
-        if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add cpi-artifacts/**/*.docx
-          git commit -m "🤖 DOCS: Generate iFlow Technical Specification (DOCX)"
+          git commit -m "🤖 DOCS: Generate iFlow Technical Specification (DOCX)" || echo "Nothing to commit"
           git push
