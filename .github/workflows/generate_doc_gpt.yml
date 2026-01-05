@@ -24,7 +24,7 @@ jobs:
           sudo apt-get install -y jq python3 python3-pip
           pip3 install python-docx
 
-      - name: Generate iFlow Documentation
+            - name: Generate iFlow Documentation
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
@@ -41,23 +41,23 @@ jobs:
             exit 1
           fi
 
-          # ---------------- SYSTEM PROMPT (SAFE YAML + BASH) ----------------
-          SYSTEM_PROMPT=$(cat <<EOF
+          # -------- SYSTEM PROMPT (YAML-SAFE) --------
+          SYSTEM_PROMPT=$(cat <<'EOF'
 You are a senior SAP CPI Technical Architect. Your task is to analyze the provided artifacts and create a professional SAP CPI Technical Specification document.
 
 CRITICAL FORMATTING INSTRUCTIONS:
-1. COLOR SCHEME: All headings must use color ${HEADING_COLOR}
+1. COLOR SCHEME: All headings must use the defined heading color
 2. HEADINGS: Use inline HTML for H1 and H2
-3. SUBHEADINGS: Wrap each subheading like:
-   <b style="color: ${HEADING_COLOR};">1.1 Purpose</b>
-4. FORCE NEW LINE: Content must start on a new line after subheadings 1.1 and 1.2
-5. NO CLUMPING: Separate all sections with blank lines
+3. SUBHEADINGS: Wrap subheadings like:
+   <b style="color: #1f4e79;">1.1 Purpose</b>
+4. FORCE NEW LINE: Content must start on a new line after 1.1 and 1.2
+5. NO CLUMPING: Separate sections with blank lines
 6. TESTING VALIDATION: Section 5 must include a table:
    | Test Case ID | Scenario | Expected Outcome |
 
 REQUIRED STRUCTURE:
 
-<h1 style="color: ${HEADING_COLOR}; font-size: 2.5em;">Table of Contents</h1>
+<h1 style="color: #1f4e79; font-size: 2.5em;">Table of Contents</h1>
 1. Introduction <br>
 &nbsp;&nbsp;1.1 Purpose <br>
 &nbsp;&nbsp;1.2 Scope <br>
@@ -74,22 +74,22 @@ REQUIRED STRUCTURE:
 
 ---TOC-END-PAGE-BREAK---
 
-<h1 style="color: ${HEADING_COLOR};">1. Introduction</h1>
-<b style="color: ${HEADING_COLOR};">1.1 Purpose</b>
-<b style="color: ${HEADING_COLOR};">1.2 Scope</b>
+<h1 style="color: #1f4e79;">1. Introduction</h1>
+<b style="color: #1f4e79;">1.1 Purpose</b>
+<b style="color: #1f4e79;">1.2 Scope</b>
 
-<h1 style="color: ${HEADING_COLOR};">2. Integration Overview</h1>
-<b style="color: ${HEADING_COLOR};">2.1 Integration Architecture</b>
-<b style="color: ${HEADING_COLOR};">2.2 Integration Components</b>
+<h1 style="color: #1f4e79;">2. Integration Overview</h1>
+<b style="color: #1f4e79;">2.1 Integration Architecture</b>
+<b style="color: #1f4e79;">2.2 Integration Components</b>
 
-<h1 style="color: ${HEADING_COLOR};">3. Integration Scenarios</h1>
-<b style="color: ${HEADING_COLOR};">3.1 Scenario Description</b>
-<b style="color: ${HEADING_COLOR};">3.2 Data Flows</b>
-<b style="color: ${HEADING_COLOR};">3.3 Security Requirements</b>
+<h1 style="color: #1f4e79;">3. Integration Scenarios</h1>
+<b style="color: #1f4e79;">3.1 Scenario Description</b>
+<b style="color: #1f4e79;">3.2 Data Flows</b>
+<b style="color: #1f4e79;">3.3 Security Requirements</b>
 
-<h1 style="color: ${HEADING_COLOR};">4. Error Handling and Logging</h1>
-<h1 style="color: ${HEADING_COLOR};">5. Testing Validation</h1>
-<h1 style="color: ${HEADING_COLOR};">6. Reference Documents</h1>
+<h1 style="color: #1f4e79;">4. Error Handling and Logging</h1>
+<h1 style="color: #1f4e79;">5. Testing Validation</h1>
+<h1 style="color: #1f4e79;">6. Reference Documents</h1>
 EOF
 )
 
