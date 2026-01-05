@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "CPI Integration Package ID (e.g., PDFconverter)"
+        description: "The ID of the CPI Integration Package (e.g., 'PDFconverter')"
         required: true
         type: string
 
@@ -30,40 +30,86 @@ jobs:
           PKG_ID: ${{ github.event.inputs.package_id }}
           HEADING_COLOR: "#1f4e79"
         run: |
+          set -e
+
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL="gpt-4o-mini"
-          BASE_DIR="cpi-artifacts/$PKG_ID"
+          BASE_DIR="cpi-artifacts/${PKG_ID}"
 
           if [ ! -d "$BASE_DIR" ]; then
-            echo "::error::Package not found: $BASE_DIR"
+            echo "::error::Package directory not found: $BASE_DIR"
             exit 1
           fi
 
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect.
-          Generate a professional SAP CPI Technical Specification document.
-          Follow this structure strictly:
-          1. Introduction (1.1 Purpose, 1.2 Scope)
-          2. Integration Overview (Architecture, Components)
-          3. Integration Scenarios
-          4. Error Handling and Logging
-          5. Testing Validation (table)
-          6. Reference Documents"
+          # ---------------- SYSTEM PROMPT (SAFE YAML + BASH) ----------------
+          SYSTEM_PROMPT=$(cat <<EOF
+You are a senior SAP CPI Technical Architect. Your task is to analyze the provided artifacts and create a professional SAP CPI Technical Specification document.
 
+CRITICAL FORMATTING INSTRUCTIONS:
+1. COLOR SCHEME: All headings must use color ${HEADING_COLOR}
+2. HEADINGS: Use inline HTML for H1 and H2
+3. SUBHEADINGS: Wrap each subheading like:
+   <b style="color: ${HEADING_COLOR};">1.1 Purpose</b>
+4. FORCE NEW LINE: Content must start on a new line after subheadings 1.1 and 1.2
+5. NO CLUMPING: Separate all sections with blank lines
+6. TESTING VALIDATION: Section 5 must include a table:
+   | Test Case ID | Scenario | Expected Outcome |
+
+REQUIRED STRUCTURE:
+
+<h1 style="color: ${HEADING_COLOR}; font-size: 2.5em;">Table of Contents</h1>
+1. Introduction <br>
+&nbsp;&nbsp;1.1 Purpose <br>
+&nbsp;&nbsp;1.2 Scope <br>
+2. Integration Overview <br>
+&nbsp;&nbsp;2.1 Integration Architecture <br>
+&nbsp;&nbsp;2.2 Integration Components <br>
+3. Integration Scenarios <br>
+&nbsp;&nbsp;3.1 Scenario Description <br>
+&nbsp;&nbsp;3.2 Data Flows <br>
+&nbsp;&nbsp;3.3 Security Requirements <br>
+4. Error Handling and Logging <br>
+5. Testing Validation <br>
+6. Reference Documents <br>
+
+---TOC-END-PAGE-BREAK---
+
+<h1 style="color: ${HEADING_COLOR};">1. Introduction</h1>
+<b style="color: ${HEADING_COLOR};">1.1 Purpose</b>
+<b style="color: ${HEADING_COLOR};">1.2 Scope</b>
+
+<h1 style="color: ${HEADING_COLOR};">2. Integration Overview</h1>
+<b style="color: ${HEADING_COLOR};">2.1 Integration Architecture</b>
+<b style="color: ${HEADING_COLOR};">2.2 Integration Components</b>
+
+<h1 style="color: ${HEADING_COLOR};">3. Integration Scenarios</h1>
+<b style="color: ${HEADING_COLOR};">3.1 Scenario Description</b>
+<b style="color: ${HEADING_COLOR};">3.2 Data Flows</b>
+<b style="color: ${HEADING_COLOR};">3.3 Security Requirements</b>
+
+<h1 style="color: ${HEADING_COLOR};">4. Error Handling and Logging</h1>
+<h1 style="color: ${HEADING_COLOR};">5. Testing Validation</h1>
+<h1 style="color: ${HEADING_COLOR};">6. Reference Documents</h1>
+EOF
+)
+
+          # ---------------- PROCESS EACH IFLOW ----------------
           while IFS= read -r IFLOW_DIR; do
             IFLOW_NAME=$(basename "$IFLOW_DIR")
-            OUTPUT_DOC="$IFLOW_DIR/${IFLOW_NAME}_Summary.docx"
             TMP_TXT="/tmp/${IFLOW_NAME}_content.txt"
+            OUTPUT_DOC="${IFLOW_DIR}/${IFLOW_NAME}_Summary.docx"
 
-            echo "Generating docs for $IFLOW_NAME"
+            echo "Generating documentation for $IFLOW_NAME"
 
             echo "Analyze the following CPI artifacts:" > "$TMP_TXT"
-            find "$IFLOW_DIR" -type f \( -name '*.xml' -o -name '*.groovy' -o -name '*.iflw' \) -exec cat {} \; >> "$TMP_TXT"
+            find "$IFLOW_DIR" -type f \( -name '*.xml' -o -name '*.groovy' -o -name '*.iflw' \) \
+              -exec cat {} \; >> "$TMP_TXT"
 
             jq -n \
               --arg model "$MODEL" \
               --arg system "$SYSTEM_PROMPT" \
               --rawfile user "$TMP_TXT" \
-              '{model: $model, messages: [{role:"system",content:$system},{role:"user",content:$user}], temperature:0.1}' \
+              '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$user}],temperature:0.1}' \
               > payload.json
 
             RESPONSE=$(curl -s -X POST "$API_URL" \
@@ -90,5 +136,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add cpi-artifacts/**/_Summary.docx
-          git commit -m "🤖 DOCS: Generate DOCX iFlow documentation"
+          git commit -m "🤖 DOCS: Generate DOCX iFlow documentation" || echo "No changes to commit"
           git push
