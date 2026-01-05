@@ -1,36 +1,48 @@
 from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import sys
 from datetime import datetime
+import sys
+import os
 
-# Arguments
-input_text_file = sys.argv[1]
+# ---------------- ARGUMENTS ----------------
+# 1 = input text (AI-generated content)
+# 2 = output docx path
+# 3 = iFlow name
+# 4 = author
+# 5 = version
+input_text = sys.argv[1]
 output_docx = sys.argv[2]
 iflow_name = sys.argv[3]
 author = sys.argv[4]
 version = sys.argv[5]
 
+# ---------------- DOCUMENT ----------------
 doc = Document()
 
-# ---------------- HEADER (ALL PAGES) ----------------
+# ---------------- HEADER (LOGOS ON ALL PAGES) ----------------
 section = doc.sections[0]
 header = section.header
-p = header.paragraphs[0]
-p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+header_para = header.paragraphs[0]
+header_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-run = p.add_run()
-run.add_picture("tools/logos/sap.png", width=Inches(1.6))
+# SAP Logo (Left)
+run_left = header_para.add_run()
+run_left.add_picture("tools/logos/sap.png", width=Inches(1.6))
 
-p.add_run("\t" * 6)
+# Spacer
+header_para.add_run("\t" * 6)
 
-run2 = p.add_run()
-run2.add_picture("tools/logos/motiveminds.png", width=Inches(1.5))
+# MotiveMinds Logo (Right)
+run_right = header_para.add_run()
+run_right.add_picture("tools/logos/motiveminds.png", width=Inches(1.5))
 
 # ---------------- COVER PAGE ----------------
 title = doc.add_paragraph()
 title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-title.add_run(iflow_name).bold = True
+title_run = title.add_run(iflow_name)
+title_run.bold = True
+title_run.font.size = Inches(0.35)
 
 subtitle = doc.add_paragraph()
 subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -47,8 +59,12 @@ meta.add_run(f"Version: {version}")
 doc.add_page_break()
 
 # ---------------- MAIN CONTENT ----------------
-with open(input_text_file, "r", encoding="utf-8") as f:
+with open(input_text, "r", encoding="utf-8") as f:
     for line in f:
         doc.add_paragraph(line.rstrip())
 
+# ---------------- SAVE ----------------
+os.makedirs(os.path.dirname(output_docx), exist_ok=True)
 doc.save(output_docx)
+
+print(f"Document generated successfully: {output_docx}")
