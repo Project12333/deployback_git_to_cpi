@@ -1,3 +1,67 @@
+name: 🤖 Generation Individual iFlow Documentation (Word with Diagrams)
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "The ID of the CPI Integration Package (e.g., PDFconverter)"
+        required: true
+        type: string
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      # -------------------------------------------------
+      # 1. Checkout Repository
+      # -------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------
+      # 2. Install Dependencies
+      # -------------------------------------------------
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq pandoc python3-pip
+          pip3 install python-docx
+
+      # -------------------------------------------------
+      # 3. Create reference.docx with header logos
+      # -------------------------------------------------
+      - name: Create Word reference.docx with logos
+        run: |
+          python3 - <<'PY'
+          from docx import Document
+          from docx.shared import Cm
+          from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+          doc = Document()
+          section = doc.sections[0]
+          header = section.header
+
+          table = header.add_table(rows=1, cols=2, width=Cm(16))
+          table.autofit = False
+
+          left = table.cell(0, 0).paragraphs[0]
+          left.alignment = WD_ALIGN_PARAGRAPH.LEFT
+          left.add_run().add_picture("tools/logos/sap.png", width=Cm(3.5))
+
+          right = table.cell(0, 1).paragraphs[0]
+          right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+          right.add_run().add_picture("tools/logos/motiveminds.png", width=Cm(4.5))
+
+          doc.save("tools/reference.docx")
+          PY
+
+      # -------------------------------------------------
+      # 4. Generate iFlow Documentation
+      # -------------------------------------------------
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
@@ -77,52 +141,28 @@ PROMPT
             CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
             [ -z "$CONTENT" ] && continue
 
-            # -------------------------------------------------
-            # COVER PAGE + TOC + CONTENT (YAML SAFE)
-            # -------------------------------------------------
             cat > "$TEMP_MD" <<EOF
 <div style="page-break-after: always; text-align: center; margin-top: 200px;">
 
 <h1 style="color:#1f4e79; font-size:36px;"><b>${IFLOW_NAME}</b></h1>
-
 <p style="font-size:20px;"><b>Technical Specification Document</b></p>
 
-<br><br>
-
-<table style="margin:0 auto; width:65%; border-collapse:collapse;" border="1">
+<table style="margin:0 auto; width:65%;" border="1">
 <tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
 <tr><td><b>Date</b></td><td>${DATE}</td></tr>
 <tr><td><b>Version</b></td><td>${VERSION}</td></tr>
 </table>
-
 </div>
 
 <div style="page-break-after: always;">
-
 <h1 style="color:#1f4e79;"><b>Table of Contents</b></h1>
-
 1. Introduction  
-&nbsp;&nbsp;1.1 Purpose  
-&nbsp;&nbsp;1.2 Scope  
-
 2. Integration Overview  
-&nbsp;&nbsp;2.1 Integration Architecture  
-&nbsp;&nbsp;2.2 Integration Components  
-
 3. Integration Scenarios  
-&nbsp;&nbsp;3.1 Scenario Description  
-&nbsp;&nbsp;3.2 Data Flows  
-&nbsp;&nbsp;3.3 Security Requirements  
-
 4. Error Handling and Logging  
-
 5. Testing Validation  
-
 6. Reference Documents  
-
 </div>
-
-<div style="page-break-after: always;"></div>
 
 ${CONTENT}
 EOF
@@ -136,3 +176,15 @@ EOF
           done < <(find "$BASE_PKG_DIR" -type f \( -name '*.iflw' -o -name 'iFlowContent.xml' \) -printf '%h\n' | sort -u)
 
           echo "docs_generated=$ALL_DOCS_GENERATED" >> "$GITHUB_OUTPUT"
+
+      # -------------------------------------------------
+      # 5. Commit and Push
+      # -------------------------------------------------
+      - name: Commit and push generated docs
+        if: steps.documentation_step.outputs.docs_generated == 'true'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
+          git commit -m "🤖 Auto-generated CPI Technical Specification"
+          git push
