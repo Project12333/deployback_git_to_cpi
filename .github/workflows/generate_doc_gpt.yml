@@ -11,7 +11,6 @@ on:
 jobs:
   document:
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
 
@@ -74,36 +73,36 @@ jobs:
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
-          SYSTEM_PROMPT=$(cat <<'PROMPT'
-You are a senior SAP CPI Technical Architect.
+          SYSTEM_PROMPT="$(cat <<'PROMPT'
+          You are a senior SAP CPI Technical Architect.
 
-Generate documentation using ONLY the following structure.
-Do NOT add extra sections.
+          Generate documentation using ONLY the following structure.
+          Do NOT add extra sections.
 
-# 1. Introduction
-## 1.1 Purpose
-## 1.2 Scope
+          # 1. Introduction
+          ## 1.1 Purpose
+          ## 1.2 Scope
 
-# 2. Integration Overview
-## 2.1 Integration Architecture
-## 2.2 Integration Components
+          # 2. Integration Overview
+          ## 2.1 Integration Architecture
+          ## 2.2 Integration Components
 
-# 3. Integration Scenarios
-## 3.1 Scenario Description
-## 3.2 Data Flows
-## 3.3 Security Requirements
+          # 3. Integration Scenarios
+          ## 3.1 Scenario Description
+          ## 3.2 Data Flows
+          ## 3.3 Security Requirements
 
-# 4. Error Handling and Logging
+          # 4. Error Handling and Logging
 
-# 5. Testing Validation
-Use a table:
-| Test Case ID | Scenario | Expected Outcome |
+          # 5. Testing Validation
+          Use a table:
+          | Test Case ID | Scenario | Expected Outcome |
 
-# 6. Reference Documents
+          # 6. Reference Documents
 
-Output must be valid Markdown.
-PROMPT
-          )
+          Output must be valid Markdown.
+          PROMPT
+          )"
 
           ALL_DOCS_GENERATED=false
 
@@ -142,30 +141,29 @@ PROMPT
             [ -z "$CONTENT" ] && continue
 
             cat > "$TEMP_MD" <<EOF
-<div style="page-break-after: always; text-align: center; margin-top: 200px;">
+          <div style="page-break-after: always; text-align: center; margin-top: 200px;">
+          <h1 style="color:#1f4e79; font-size:36px;"><b>${IFLOW_NAME}</b></h1>
+          <p style="font-size:20px;"><b>Technical Specification Document</b></p>
 
-<h1 style="color:#1f4e79; font-size:36px;"><b>${IFLOW_NAME}</b></h1>
-<p style="font-size:20px;"><b>Technical Specification Document</b></p>
+          <table style="margin:0 auto; width:65%;" border="1">
+          <tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
+          <tr><td><b>Date</b></td><td>${DATE}</td></tr>
+          <tr><td><b>Version</b></td><td>${VERSION}</td></tr>
+          </table>
+          </div>
 
-<table style="margin:0 auto; width:65%;" border="1">
-<tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
-<tr><td><b>Date</b></td><td>${DATE}</td></tr>
-<tr><td><b>Version</b></td><td>${VERSION}</td></tr>
-</table>
-</div>
+          <div style="page-break-after: always;">
+          <h1 style="color:#1f4e79;"><b>Table of Contents</b></h1>
+          1. Introduction  
+          2. Integration Overview  
+          3. Integration Scenarios  
+          4. Error Handling and Logging  
+          5. Testing Validation  
+          6. Reference Documents  
+          </div>
 
-<div style="page-break-after: always;">
-<h1 style="color:#1f4e79;"><b>Table of Contents</b></h1>
-1. Introduction  
-2. Integration Overview  
-3. Integration Scenarios  
-4. Error Handling and Logging  
-5. Testing Validation  
-6. Reference Documents  
-</div>
-
-${CONTENT}
-EOF
+          ${CONTENT}
+          EOF
 
             pandoc "$TEMP_MD" \
               --reference-doc=tools/reference.docx \
