@@ -49,10 +49,10 @@ jobs:
         table = header.add_table(rows=1, cols=2, width=Cm(16))
         table.autofit = False
 
-        table.cell(0, 0).paragraphs[0].add_run().add_picture(
+        table.cell(0,0).paragraphs[0].add_run().add_picture(
             "tools/logos/sap.png", width=Cm(3.5)
         )
-        table.cell(0, 1).paragraphs[0].add_run().add_picture(
+        table.cell(0,1).paragraphs[0].add_run().add_picture(
             "tools/logos/motiveminds.png", width=Cm(4.5)
         )
 
@@ -61,13 +61,9 @@ jobs:
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
         run = p.add_run()
-        b = OxmlElement('w:fldChar')
-        b.set(qn('w:fldCharType'), 'begin')
-        i = OxmlElement('w:instrText')
-        i.text = "PAGE"
-        e = OxmlElement('w:fldChar')
-        e.set(qn('w:fldCharType'), 'end')
-
+        b = OxmlElement('w:fldChar'); b.set(qn('w:fldCharType'), 'begin')
+        i = OxmlElement('w:instrText'); i.text = "PAGE"
+        e = OxmlElement('w:fldChar'); e.set(qn('w:fldCharType'), 'end')
         run._r.extend([b, i, e])
 
         doc.save("tools/reference.docx")
@@ -116,40 +112,25 @@ jobs:
           CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
           [ -z "$CONTENT" ] && continue
 
-          # ---------- SAFE TEMPLATE ----------
-          printf "%s\n%s\n%s\n" "__PAGE1__" "__PAGE2__" "__CONTENT__" > content.md
+          # -------- BUILD MARKDOWN SAFELY --------
+          rm -f content.md
 
-          PAGE1=$(cat <<EOT
-<div style="page-break-after: always; text-align:center; margin-top:180px;">
-<h1 style="color:#1f4e79;">${IFLOW_NAME}</h1>
-<h2>Technical Specification Document</h2>
-<br><br>
-<table border="1" style="margin:auto; width:50%;">
-<tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
-<tr><td><b>Date</b></td><td>${DATE}</td></tr>
-<tr><td><b>Version</b></td><td>${VERSION}</td></tr>
-</table>
-</div>
-EOT
-)
+          printf "<div style=\"page-break-after: always; text-align:center; margin-top:180px;\">\n" >> content.md
+          printf "<h1 style=\"color:#1f4e79;\">%s</h1>\n" "$IFLOW_NAME" >> content.md
+          printf "<h2>Technical Specification Document</h2>\n<br><br>\n" >> content.md
+          printf "<table border=\"1\" style=\"margin:auto; width:50%%;\">\n" >> content.md
+          printf "<tr><td><b>Author</b></td><td>%s</td></tr>\n" "$AUTHOR" >> content.md
+          printf "<tr><td><b>Date</b></td><td>%s</td></tr>\n" "$DATE" >> content.md
+          printf "<tr><td><b>Version</b></td><td>%s</td></tr>\n" "$VERSION" >> content.md
+          printf "</table>\n</div>\n\n" >> content.md
 
-          PAGE2=$(cat <<EOT
-<div style="page-break-after: always;">
-<h1 style="color:#1f4e79;">Table of Contents</h1>
+          printf "<div style=\"page-break-after: always;\">\n" >> content.md
+          printf "<h1 style=\"color:#1f4e79;\">Table of Contents</h1>\n\n" >> content.md
+          printf "1. Introduction  \n2. Integration Overview  \n3. Integration Scenarios  \n" >> content.md
+          printf "4. Error Handling and Logging  \n5. Testing Validation  \n6. Reference Documents\n" >> content.md
+          printf "</div>\n\n" >> content.md
 
-1. Introduction  
-2. Integration Overview  
-3. Integration Scenarios  
-4. Error Handling and Logging  
-5. Testing Validation  
-6. Reference Documents
-</div>
-EOT
-)
-
-          sed -i "s|__PAGE1__|$PAGE1|" content.md
-          sed -i "s|__PAGE2__|$PAGE2|" content.md
-          sed -i "s|__CONTENT__|$CONTENT|" content.md
+          printf "%s\n" "$CONTENT" >> content.md
 
           pandoc content.md \
             --reference-doc=tools/reference.docx \
