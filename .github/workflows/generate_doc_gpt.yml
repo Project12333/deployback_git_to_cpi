@@ -31,19 +31,22 @@ jobs:
           pip3 install python-docx
 
       # -------------------------------------------------
-      # 3. Create reference.docx with header logos
+      # 3. Create reference.docx (logos + page numbers)
       # -------------------------------------------------
-      - name: Create Word reference.docx with logos
+      - name: Create Word reference.docx with logos and page numbers
         run: |
           python3 - <<'PY'
           from docx import Document
           from docx.shared import Cm
           from docx.enum.text import WD_ALIGN_PARAGRAPH
+          from docx.oxml import OxmlElement
+          from docx.oxml.ns import qn
 
           doc = Document()
           section = doc.sections[0]
-          header = section.header
 
+          # ---------- HEADER (LOGOS) ----------
+          header = section.header
           table = header.add_table(rows=1, cols=2, width=Cm(16))
           table.autofit = False
 
@@ -54,6 +57,26 @@ jobs:
           right = table.cell(0, 1).paragraphs[0]
           right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
           right.add_run().add_picture("tools/logos/motiveminds.png", width=Cm(4.5))
+
+          # ---------- FOOTER (PAGE NUMBER) ----------
+          footer = section.footer
+          p = footer.paragraphs[0]
+          p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+          run = p.add_run()
+
+          fld_begin = OxmlElement('w:fldChar')
+          fld_begin.set(qn('w:fldCharType'), 'begin')
+
+          instr = OxmlElement('w:instrText')
+          instr.text = "PAGE"
+
+          fld_end = OxmlElement('w:fldChar')
+          fld_end.set(qn('w:fldCharType'), 'end')
+
+          run._r.append(fld_begin)
+          run._r.append(instr)
+          run._r.append(fld_end)
 
           doc.save("tools/reference.docx")
           PY
@@ -142,24 +165,35 @@ jobs:
 
             cat > "$TEMP_MD" <<EOF
           <div style="page-break-after: always; text-align: center; margin-top: 200px;">
-          <h1 style="color:#1f4e79; font-size:36px;"><b>${IFLOW_NAME}</b></h1>
-          <p style="font-size:20px;"><b>Technical Specification Document</b></p>
 
-          <table style="margin:0 auto; width:65%;" border="1">
-          <tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
-          <tr><td><b>Date</b></td><td>${DATE}</td></tr>
-          <tr><td><b>Version</b></td><td>${VERSION}</td></tr>
+          <h1 style="color:#1f4e79; font-size:34px; font-weight:bold;">
+          ${IFLOW_NAME}
+          </h1>
+
+          <h2 style="font-size:22px; font-weight:bold;">
+          Technical Specification Document
+          </h2>
+
+          <br><br>
+
+          <table style="margin-left:auto; margin-right:auto; width:50%; border-collapse:collapse;" border="1">
+            <tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
+            <tr><td><b>Date</b></td><td>${DATE}</td></tr>
+            <tr><td><b>Version</b></td><td>${VERSION}</td></tr>
           </table>
+
           </div>
 
           <div style="page-break-after: always;">
-          <h1 style="color:#1f4e79;"><b>Table of Contents</b></h1>
+          <h1 style="color:#1f4e79; font-weight:bold;">Table of Contents</h1>
+
           1. Introduction  
           2. Integration Overview  
           3. Integration Scenarios  
           4. Error Handling and Logging  
           5. Testing Validation  
           6. Reference Documents  
+
           </div>
 
           ${CONTENT}
