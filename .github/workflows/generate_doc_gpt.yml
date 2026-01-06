@@ -95,8 +95,6 @@ jobs:
         MODEL="gpt-4o-mini"
         BASE_DIR="cpi-artifacts/$PKG_ID"
 
-        SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Output valid Markdown only."
-
         GENERATED=false
 
         while IFS= read -r IFLOW_DIR; do
@@ -107,13 +105,13 @@ jobs:
           DATE=$(date +'%Y-%m-%d')
           VERSION="1.0.0"
 
-          QUERY="Generate documentation for iFlow $IFLOW_NAME"
+          QUERY="Generate SAP CPI technical documentation for iFlow $IFLOW_NAME"
           QUERY+=$'\n'
-          QUERY+=$(find "$IFLOW_DIR" -type f -name '*.xml' -o -name '*.groovy' -o -name '*.iflw' -exec cat {} +)
+          QUERY+=$(find "$IFLOW_DIR" -type f \( -name '*.xml' -o -name '*.groovy' -o -name '*.iflw' \) -exec cat {} +)
 
           jq -n \
             --arg model "$MODEL" \
-            --arg system "$SYSTEM_PROMPT" \
+            --arg system "You are a senior SAP CPI Technical Architect. Output valid Markdown only." \
             --arg user "$QUERY" \
             '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$user}]}' \
             > payload.json
@@ -126,38 +124,37 @@ jobs:
           CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
           [ -z "$CONTENT" ] && continue
 
+          # --------- SAFE TEMPLATE ----------
           cat > content.md <<'EOF'
-<!-- PAGE 1 -->
-<div style="page-break-after: always; text-align: center; margin-top: 180px;">
-<h1 style="color:#1f4e79;">IFLOW_NAME</h1>
+__PAGE1__
+__PAGE2__
+__CONTENT__
+EOF
+
+          PAGE1="<div style='page-break-after: always; text-align:center; margin-top:180px;'>
+<h1 style='color:#1f4e79;'>${IFLOW_NAME}</h1>
 <h2>Technical Specification Document</h2>
 <br><br>
-<table border="1" style="margin:auto; width:50%;">
-<tr><td><b>Author</b></td><td>AUTHOR</td></tr>
-<tr><td><b>Date</b></td><td>DATE</td></tr>
-<tr><td><b>Version</b></td><td>VERSION</td></tr>
+<table border='1' style='margin:auto; width:50%;'>
+<tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
+<tr><td><b>Date</b></td><td>${DATE}</td></tr>
+<tr><td><b>Version</b></td><td>${VERSION}</td></tr>
 </table>
-</div>
+</div>"
 
-<!-- PAGE 2 -->
-<div style="page-break-after: always;">
-<h1 style="color:#1f4e79;">Table of Contents</h1>
+          PAGE2="<div style='page-break-after: always;'>
+<h1 style='color:#1f4e79;'>Table of Contents</h1>
 1. Introduction  
 2. Integration Overview  
 3. Integration Scenarios  
-4. Error Handling  
+4. Error Handling and Logging  
 5. Testing Validation  
 6. Reference Documents
-</div>
+</div>"
 
-CONTENT_PLACEHOLDER
-EOF
-
-          sed -i "s/IFLOW_NAME/$IFLOW_NAME/g" content.md
-          sed -i "s/AUTHOR/$AUTHOR/g" content.md
-          sed -i "s/DATE/$DATE/g" content.md
-          sed -i "s/VERSION/$VERSION/g" content.md
-          sed -i "s|CONTENT_PLACEHOLDER|$CONTENT|" content.md
+          sed -i "s|__PAGE1__|$PAGE1|" content.md
+          sed -i "s|__PAGE2__|$PAGE2|" content.md
+          sed -i "s|__CONTENT__|$CONTENT|" content.md
 
           pandoc content.md \
             --reference-doc=tools/reference.docx \
