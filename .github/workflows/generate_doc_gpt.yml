@@ -31,9 +31,9 @@ jobs:
         pip3 install python-docx
 
     # -------------------------------------------------
-    # 3. Create reference.docx (logos + footer)
+    # 3. Create reference.docx (logos + page numbers)
     # -------------------------------------------------
-    - name: Create Word reference.docx
+    - name: Create reference.docx
       run: |
         python3 - <<'PY'
         from docx import Document
@@ -45,37 +45,30 @@ jobs:
         doc = Document()
         section = doc.sections[0]
 
-        # Header
         header = section.header
         table = header.add_table(rows=1, cols=2, width=Cm(16))
         table.autofit = False
 
-        left = table.cell(0, 0).paragraphs[0]
-        left.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        left.add_run().add_picture("tools/logos/sap.png", width=Cm(3.5))
+        table.cell(0, 0).paragraphs[0].add_run().add_picture(
+            "tools/logos/sap.png", width=Cm(3.5)
+        )
+        table.cell(0, 1).paragraphs[0].add_run().add_picture(
+            "tools/logos/motiveminds.png", width=Cm(4.5)
+        )
 
-        right = table.cell(0, 1).paragraphs[0]
-        right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        right.add_run().add_picture("tools/logos/motiveminds.png", width=Cm(4.5))
-
-        # Footer - page number
         footer = section.footer
         p = footer.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
         run = p.add_run()
-        fld_begin = OxmlElement('w:fldChar')
-        fld_begin.set(qn('w:fldCharType'), 'begin')
+        b = OxmlElement('w:fldChar')
+        b.set(qn('w:fldCharType'), 'begin')
+        i = OxmlElement('w:instrText')
+        i.text = "PAGE"
+        e = OxmlElement('w:fldChar')
+        e.set(qn('w:fldCharType'), 'end')
 
-        instr = OxmlElement('w:instrText')
-        instr.text = "PAGE"
-
-        fld_end = OxmlElement('w:fldChar')
-        fld_end.set(qn('w:fldCharType'), 'end')
-
-        run._r.append(fld_begin)
-        run._r.append(instr)
-        run._r.append(fld_end)
+        run._r.extend([b, i, e])
 
         doc.save("tools/reference.docx")
         PY
@@ -105,15 +98,14 @@ jobs:
           DATE=$(date +'%Y-%m-%d')
           VERSION="1.0.0"
 
-          QUERY="Generate SAP CPI technical documentation for iFlow $IFLOW_NAME"
-          QUERY+=$'\n'
+          QUERY="Generate SAP CPI technical documentation for iFlow ${IFLOW_NAME}\n"
           QUERY+=$(find "$IFLOW_DIR" -type f \( -name '*.xml' -o -name '*.groovy' -o -name '*.iflw' \) -exec cat {} +)
 
           jq -n \
             --arg model "$MODEL" \
             --arg system "You are a senior SAP CPI Technical Architect. Output valid Markdown only." \
             --arg user "$QUERY" \
-            '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$user}]}' \
+            '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$user}],temperature:0.1}' \
             > payload.json
 
           RESPONSE=$(curl -s -X POST "$API_URL" \
@@ -124,33 +116,36 @@ jobs:
           CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
           [ -z "$CONTENT" ] && continue
 
-          # --------- SAFE TEMPLATE ----------
-          cat > content.md <<'EOF'
-__PAGE1__
-__PAGE2__
-__CONTENT__
-EOF
+          # ---------- SAFE TEMPLATE ----------
+          printf "%s\n%s\n%s\n" "__PAGE1__" "__PAGE2__" "__CONTENT__" > content.md
 
-          PAGE1="<div style='page-break-after: always; text-align:center; margin-top:180px;'>
-<h1 style='color:#1f4e79;'>${IFLOW_NAME}</h1>
+          PAGE1=$(cat <<EOT
+<div style="page-break-after: always; text-align:center; margin-top:180px;">
+<h1 style="color:#1f4e79;">${IFLOW_NAME}</h1>
 <h2>Technical Specification Document</h2>
 <br><br>
-<table border='1' style='margin:auto; width:50%;'>
+<table border="1" style="margin:auto; width:50%;">
 <tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
 <tr><td><b>Date</b></td><td>${DATE}</td></tr>
 <tr><td><b>Version</b></td><td>${VERSION}</td></tr>
 </table>
-</div>"
+</div>
+EOT
+)
 
-          PAGE2="<div style='page-break-after: always;'>
-<h1 style='color:#1f4e79;'>Table of Contents</h1>
+          PAGE2=$(cat <<EOT
+<div style="page-break-after: always;">
+<h1 style="color:#1f4e79;">Table of Contents</h1>
+
 1. Introduction  
 2. Integration Overview  
 3. Integration Scenarios  
 4. Error Handling and Logging  
 5. Testing Validation  
 6. Reference Documents
-</div>"
+</div>
+EOT
+)
 
           sed -i "s|__PAGE1__|$PAGE1|" content.md
           sed -i "s|__PAGE2__|$PAGE2|" content.md
