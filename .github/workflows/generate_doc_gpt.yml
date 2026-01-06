@@ -79,7 +79,6 @@ jobs:
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
-          # STRICT TOC-CONTROLLED PROMPT
           SYSTEM_PROMPT=$(cat <<'PROMPT'
           You are a senior SAP CPI Technical Architect.
 
@@ -148,47 +147,54 @@ jobs:
             [ -z "$CONTENT" ] && continue
 
             # -------------------------------------------------
-            # COVER PAGE + TOC + CONTENT
+            # COVER PAGE + TOC + CONTENT (YAML SAFE)
             # -------------------------------------------------
-            printf '%s\n' \
-'<div style="page-break-after: always; text-align: center; margin-top: 200px;">' \
-"<h1 style=\"color:#1f4e79; font-size:36px;\"><b>${IFLOW_NAME}</b></h1>" \
-'<p style="font-size:20px;"><b>Technical Specification Document</b></p>' \
-'<br><br>' \
-'<table style="margin:0 auto; width:65%; border-collapse:collapse;" border="1">' \
-'<tr><td style="width:30%;"><b>Author</b></td>'"<td>${AUTHOR}</td></tr>" \
-'<tr><td><b>Date</b></td>'"<td>${DATE}</td></tr>" \
-'<tr><td><b>Version</b></td>'"<td>${VERSION}</td></tr>" \
-'</table>' \
-'</div>' \
-'' \
-'<div style="page-break-after: always;">' \
-'<h1 style="color:#1f4e79;"><b>Table of Contents</b></h1>' \
-'' \
-'1. Introduction' \
-'   1.1 Purpose' \
-'   1.2 Scope' \
-'' \
-'2. Integration Overview' \
-'   2.1 Integration Architecture' \
-'   2.2 Integration Components' \
-'' \
-'3. Integration Scenarios' \
-'   3.1 Scenario Description' \
-'   3.2 Data Flows' \
-'   3.3 Security Requirements' \
-'' \
-'4. Error Handling and Logging' \
-'' \
-'5. Testing Validation' \
-'' \
-'6. Reference Documents' \
-'</div>' \
-'' \
-'<div style="page-break-after: always;"></div>' \
-'' \
-"${CONTENT}" \
-> "$TEMP_MD"
+            cat > "$TEMP_MD" <<EOF
+<div style="page-break-after: always; text-align: center; margin-top: 200px;">
+
+<h1 style="color:#1f4e79; font-size:36px;"><b>${IFLOW_NAME}</b></h1>
+
+<p style="font-size:20px;"><b>Technical Specification Document</b></p>
+
+<br><br>
+
+<table style="margin:0 auto; width:65%; border-collapse:collapse;" border="1">
+<tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
+<tr><td><b>Date</b></td><td>${DATE}</td></tr>
+<tr><td><b>Version</b></td><td>${VERSION}</td></tr>
+</table>
+
+</div>
+
+<div style="page-break-after: always;">
+
+<h1 style="color:#1f4e79;"><b>Table of Contents</b></h1>
+
+1. Introduction  
+&nbsp;&nbsp;1.1 Purpose  
+&nbsp;&nbsp;1.2 Scope  
+
+2. Integration Overview  
+&nbsp;&nbsp;2.1 Integration Architecture  
+&nbsp;&nbsp;2.2 Integration Components  
+
+3. Integration Scenarios  
+&nbsp;&nbsp;3.1 Scenario Description  
+&nbsp;&nbsp;3.2 Data Flows  
+&nbsp;&nbsp;3.3 Security Requirements  
+
+4. Error Handling and Logging  
+
+5. Testing Validation  
+
+6. Reference Documents  
+
+</div>
+
+<div style="page-break-after: always;"></div>
+
+${CONTENT}
+EOF
 
             pandoc "$TEMP_MD" \
               --reference-doc=tools/reference.docx \
