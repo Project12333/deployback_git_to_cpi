@@ -1,9 +1,32 @@
-- name: Generate DOCX Documentation
+name: 🤖 Generation Individual iFlow Documentation (DOCX)
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "The ID of the CPI Integration Package"
+        required: true
+        type: string
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          pip3 install python-docx requests
+
+      - name: Generate DOCX Documentation
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
-          # 1️⃣ ROBUST PYTHON SCRIPT
+          # 1️⃣ CREATE THE PYTHON SCRIPT
           cat << 'EOF' > generate_docx.py
           import sys, json, requests, os
           from docx import Document
@@ -19,7 +42,7 @@
           def build_docx(iflow_name, author, date, json_raw, output_path):
               doc = Document()
               
-              # Parse AI Content
+              # Parse AI Content Safely
               try:
                   data = json.loads(json_raw)
               except:
@@ -40,15 +63,18 @@
                   mm_p.add_run().add_picture("mm.png", height=Inches(0.6))
               except: pass
 
-              # --- PAGE 1: COVER PAGE WITH AUTHOR TABLE ---
+              # --- PAGE 1: COVER PAGE ---
               for _ in range(5): doc.add_paragraph()
               title_p = doc.add_paragraph()
               title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
               run = title_p.add_run(iflow_name)
               run.font.size, run.font.bold = Pt(32), True
+              run.font.color.rgb = RGBColor(31, 56, 100)
+              
               doc.add_paragraph("Technical Specification Document").alignment = WD_ALIGN_PARAGRAPH.CENTER
               doc.add_paragraph("\n" * 2)
 
+              # AUTHOR TABLE
               meta = doc.add_table(rows=3, cols=2)
               meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
               meta.style = 'Table Grid'
@@ -70,9 +96,8 @@
                   if ind == 1: p.paragraph_format.left_indent = Inches(0.3)
               doc.add_page_break()
 
-              # --- PAGE 3+: CONTENT MAPPING ---
-              # (Using a list of tuples to ensure order)
-              sections = [
+              # --- PAGE 3+: DYNAMIC CONTENT MAPPING ---
+              content_map = [
                   ("1.", "Introduction", 1, None),
                   ("1.1", "Purpose", 2, "purpose"),
                   ("1.2", "Scope", 2, "scope"),
@@ -88,11 +113,12 @@
                   ("6.", "Reference Documents", 1, "references")
               ]
 
-              for num, title, lvl, key in sections:
+              for num, title, lvl, key in content_map:
                   add_numbered_heading(doc, title, lvl, num)
                   if key:
-                      val = data.get(key, f"Technical details for {title} in {iflow_name}.")
-                      doc.add_paragraph(str(val))
+                      # If AI failed to provide a specific key, provide a fallback description
+                      text_val = data.get(key, f"Detailed technical documentation for {title} regarding the {iflow_name} integration.")
+                      doc.add_paragraph(str(text_val))
 
               doc.save(output_path)
 
@@ -100,7 +126,7 @@
               build_docx(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
           EOF
 
-          # 2️⃣ EXECUTION
+          # 2️⃣ EXECUTION LOOP
           BASE_DIR="cpi-artifacts/$PKG_ID"
           for IFLOW_DIR in "$BASE_DIR"/*; do
             if [ -d "$IFLOW_DIR" ]; then
@@ -108,19 +134,25 @@
               AUTHOR=$(git log -1 --pretty=format:'%an' || echo "Technical Lead")
               DATE=$(date +%Y-%m-%d)
               
-              # Call AI with a very specific prompt
+              # AI Request for all sections
               RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
                 -H "Authorization: Bearer $OPENAI_API_KEY" \
                 -H "Content-Type: application/json" \
                 -d "{
                   \"model\": \"gpt-4o-mini\",
-                  \"messages\": [{\"role\": \"user\", \"content\": \"Generate a technical documentation for SAP CPI iFlow: $IFLOW_NAME. Return a JSON object with strictly these keys: purpose, scope, architecture, components, scenario_desc, data_flows, security, error_handling, testing, references. Values must be descriptive strings.\"}],
+                  \"messages\": [{\"role\": \"user\", \"content\": \"Generate technical documentation for SAP CPI iFlow: $IFLOW_NAME. Return ONLY a JSON object with keys: purpose, scope, architecture, components, scenario_desc, data_flows, security, error_handling, testing, references.\"}],
                   \"response_format\": { \"type\": \"json_object\" }
                 }")
               
-              # Extract content safely
               JSON_CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
-              
               python3 generate_docx.py "$IFLOW_NAME" "$AUTHOR" "$DATE" "$JSON_CONTENT" "$IFLOW_DIR/${IFLOW_NAME}.docx"
             fi
           done
+
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "🤖 DOCS: Corrected YAML indent and full content mapping" || echo "No changes"
+          git push
