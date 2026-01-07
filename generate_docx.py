@@ -1,4 +1,4 @@
-import sys, json, requests, os
+import sys, json, os
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -13,30 +13,31 @@ def add_numbered_heading(doc, text, level, num_str):
 
 def build_docx(iflow_name, author, date, json_raw, output_path):
     doc = Document()
-    
     try:
         data = json.loads(json_raw)
     except:
         data = {}
 
-    # --- HEADER (LOCAL LOGOS) ---
+    # --- HEADER (LOCAL LOGOS - INCREASED SIZE) ---
     section = doc.sections[0]
     header = section.header
     htable = header.add_table(1, 2, width=Inches(6.5))
     htable.allow_autofit = False
     
-    # Local paths from your repository
+    # Using your local repository paths for high-quality "bright" logos
     sap_path = "tools/logos/sap.png"
     mm_path = "tools/logos/motiveminds.png"
 
     if os.path.exists(sap_path):
         p1 = htable.rows[0].cells[0].paragraphs[0]
-        p1.add_run().add_picture(sap_path, height=Inches(0.4))
+        # Increased height to 0.6 for better visibility
+        p1.add_run().add_picture(sap_path, height=Inches(0.6))
     
     if os.path.exists(mm_path):
         p2 = htable.rows[0].cells[1].paragraphs[0]
         p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p2.add_run().add_picture(mm_path, height=Inches(0.4))
+        # Increased height to 0.6 for better visibility
+        p2.add_run().add_picture(mm_path, height=Inches(0.6))
 
     # --- PAGE 1: COVER PAGE ---
     for _ in range(3): doc.add_paragraph()
@@ -49,6 +50,7 @@ def build_docx(iflow_name, author, date, json_raw, output_path):
     doc.add_paragraph("Technical Specification Document").alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph("\n")
 
+    # AUTHOR TABLE (Restored as per request)
     meta = doc.add_table(rows=3, cols=2)
     meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
     meta.style = 'Table Grid'
@@ -57,7 +59,7 @@ def build_docx(iflow_name, author, date, json_raw, output_path):
         meta.rows[i].cells[1].text = v
     doc.add_page_break()
 
-    # --- PAGE 2: TABLE OF CONTENTS ---
+    # --- PAGE 2: TABLE OF CONTENTS (FIXED SPACING) ---
     doc.add_heading("Table of Contents", level=1)
     items = [
         ("1. Introduction", 0), ("1.1 Purpose", 1), ("1.2 Scope", 1),
@@ -67,7 +69,7 @@ def build_docx(iflow_name, author, date, json_raw, output_path):
     ]
     for text, ind in items:
         p = doc.add_paragraph(text)
-        p.paragraph_format.space_after = Pt(2)
+        p.paragraph_format.space_after = Pt(0) # Removes gaps between lines
         if ind == 1: p.paragraph_format.left_indent = Inches(0.3)
     doc.add_page_break()
 
@@ -90,14 +92,7 @@ def build_docx(iflow_name, author, date, json_raw, output_path):
 
     for num, title, lvl, key in content_map:
         add_numbered_heading(doc, title, lvl, num)
-        
-        # Constrain Architecture Diagram size
-        if title == "Integration Architecture":
-            # Logic to check for specific iFlow diagram in repo
-            # Fallback to AI text if image not found
-            text_val = data.get(key, "Standard SAP CPI integration pattern.")
-            doc.add_paragraph(str(text_val))
-        elif key:
+        if key:
             val = data.get(key, f"Refer to technical design for {title}.")
             p = doc.add_paragraph(str(val))
             p.paragraph_format.space_after = Pt(6)
