@@ -1,222 +1,140 @@
-name: 🤖 Generation Individual iFlow Documentation (Word with Diagrams)
 
+name: 🤖 Generation Individual iFlow Documentation (DOCX)
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Integration Package (e.g., PDFconverter)"
+        description: "The ID of the CPI Integration Package"
         required: true
         type: string
-
+ 
 jobs:
   document:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      # -------------------------------------------------
-      # 1. Checkout Repository
-      # -------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # -------------------------------------------------
-      # 2. Install Dependencies
-      # -------------------------------------------------
-      - name: Install dependencies
+ 
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq pandoc python3-pip
-          pip3 install python-docx
-
-      # -------------------------------------------------
-      # 3. Create reference.docx (logos + page numbers)
-      # -------------------------------------------------
-      - name: Create Word reference.docx with logos and page numbers
-        run: |
-          python3 - <<'PY'
-          from docx import Document
-          from docx.shared import Cm
-          from docx.enum.text import WD_ALIGN_PARAGRAPH
-          from docx.oxml import OxmlElement
-          from docx.oxml.ns import qn
-
-          doc = Document()
-          section = doc.sections[0]
-
-          # ---------- HEADER (LOGOS) ----------
-          header = section.header
-          table = header.add_table(rows=1, cols=2, width=Cm(16))
-          table.autofit = False
-
-          left = table.cell(0, 0).paragraphs[0]
-          left.alignment = WD_ALIGN_PARAGRAPH.LEFT
-          left.add_run().add_picture("tools/logos/sap.png", width=Cm(3.5))
-
-          right = table.cell(0, 1).paragraphs[0]
-          right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-          right.add_run().add_picture("tools/logos/motiveminds.png", width=Cm(4.5))
-
-          # ---------- FOOTER (PAGE NUMBER) ----------
-          footer = section.footer
-          p = footer.paragraphs[0]
-          p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-          run = p.add_run()
-
-          fld_begin = OxmlElement('w:fldChar')
-          fld_begin.set(qn('w:fldCharType'), 'begin')
-
-          instr = OxmlElement('w:instrText')
-          instr.text = "PAGE"
-
-          fld_end = OxmlElement('w:fldChar')
-          fld_end.set(qn('w:fldCharType'), 'end')
-
-          run._r.append(fld_begin)
-          run._r.append(instr)
-          run._r.append(fld_end)
-
-          doc.save("tools/reference.docx")
-          PY
-
-      # -------------------------------------------------
-      # 4. Generate iFlow Documentation
-      # -------------------------------------------------
-      - name: Generate Individual iFlow Documentation via OpenAI API
-        id: documentation_step
+          pip3 install python-docx requests
+ 
+      - name: Generate DOCX Documentation
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
-          set -e
-
-          API_URL="https://api.openai.com/v1/chat/completions"
-          MODEL_NAME="gpt-4o-mini"
-          BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
-
-          SYSTEM_PROMPT="$(cat <<'PROMPT'
-          You are a senior SAP CPI Technical Architect.
-
-          Generate documentation using ONLY the following structure.
-          Do NOT add extra sections.
-
-          # 1. Introduction
-          ## 1.1 Purpose
-          ## 1.2 Scope
-
-          # 2. Integration Overview
-          ## 2.1 Integration Architecture
-          ## 2.2 Integration Components
-
-          # 3. Integration Scenarios
-          ## 3.1 Scenario Description
-          ## 3.2 Data Flows
-          ## 3.3 Security Requirements
-
-          # 4. Error Handling and Logging
-
-          # 5. Testing Validation
-          Use a table:
-          | Test Case ID | Scenario | Expected Outcome |
-
-          # 6. Reference Documents
-
-          Output must be valid Markdown.
-          PROMPT
-          )"
-
-          ALL_DOCS_GENERATED=false
-
-          while IFS= read -r IFLOW_DIR; do
-            IFLOW_NAME=$(basename "$IFLOW_DIR")
-            OUTPUT_DOCX="$IFLOW_DIR/${IFLOW_NAME}_Technical_Specification.docx"
-            TEMP_MD="content.md"
-
-            AUTHOR=$(git log -1 --pretty=format:'%an')
-            DATE=$(date +'%Y-%m-%d')
-            VERSION="1.0.0"
-
-            QUERY_FILE="query.tmp"
-            echo "Generate documentation for iFlow '$IFLOW_NAME'" > "$QUERY_FILE"
-
-            find "$IFLOW_DIR" -type f \( \
-              -name 'iFlowContent.xml' -o \
-              -name '*.groovy' -o \
-              -name '*.xslt' -o \
-              -name '*.iflw' \
-            \) -exec cat {} + >> "$QUERY_FILE"
-
-            jq -n \
-              --arg system "$SYSTEM_PROMPT" \
-              --rawfile query "$QUERY_FILE" \
-              --arg model "$MODEL_NAME" \
-              '{model:$model,messages:[{role:"system",content:$system},{role:"user",content:$query}],temperature:0.1}' \
-              > payload.json
-
-            RESPONSE=$(curl -s -X POST "$API_URL" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $OPENAI_API_KEY" \
-              -d @payload.json)
-
-            CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
-            [ -z "$CONTENT" ] && continue
-
-            cat > "$TEMP_MD" <<EOF
-          <div style="page-break-after: always; text-align: center; margin-top: 200px;">
-
-          <h1 style="color:#1f4e79; font-size:34px; font-weight:bold;">
-          ${IFLOW_NAME}
-          </h1>
-
-          <h2 style="font-size:22px; font-weight:bold;">
-          Technical Specification Document
-          </h2>
-
-          <br><br>
-
-          <table style="margin-left:auto; margin-right:auto; width:50%; border-collapse:collapse;" border="1">
-            <tr><td><b>Author</b></td><td>${AUTHOR}</td></tr>
-            <tr><td><b>Date</b></td><td>${DATE}</td></tr>
-            <tr><td><b>Version</b></td><td>${VERSION}</td></tr>
-          </table>
-
-          </div>
-
-          <div style="page-break-after: always;">
-          <h1 style="color:#1f4e79; font-weight:bold;">Table of Contents</h1>
-
-          1. Introduction  
-          2. Integration Overview  
-          3. Integration Scenarios  
-          4. Error Handling and Logging  
-          5. Testing Validation  
-          6. Reference Documents  
-
-          </div>
-
-          ${CONTENT}
+          # 1️⃣ CREATE THE PYTHON SCRIPT
+          cat << 'EOF' > generate_docx.py
+          import sys, requests, os
+          from docx import Document
+          from docx.shared import Inches, Pt, RGBColor
+          from docx.enum.text import WD_ALIGN_PARAGRAPH
+          from docx.oxml.ns import qn
+          from docx.oxml import OxmlElement
+ 
+          def add_numbered_heading(doc, text, level, num_str):
+              p = doc.add_heading(level=level)
+              run = p.add_run(f"{num_str} {text}")
+              run.font.color.rgb = RGBColor(31, 56, 100)
+              if level == 1:
+                  run.font.size = Pt(16)
+              else:
+                  run.font.size = Pt(13)
+ 
+          def build_docx(iflow_name, author, date, ai_content, output_path):
+              doc = Document()
+              # --- HEADER (LOGOS ON EVERY PAGE) ---
+              section = doc.sections[0]
+              header = section.header
+              htable = header.add_table(1, 2, width=Inches(6.5))
+              htable.allow_autofit = False
+              sap_url = "https://raw.githubusercontent.com/Akila710/CPI_Demo1/main/assets/logos/SAP.jpg"
+              mm_url = "https://raw.githubusercontent.com/Akila710/CPI_Demo1/main/assets/logos/mm_logo.png"
+              try:
+                  with open("sap.jpg", "wb") as f: f.write(requests.get(sap_url).content)
+                  with open("mm.png", "wb") as f: f.write(requests.get(mm_url).content)
+                  htable.rows[0].cells[0].paragraphs[0].add_run().add_picture("sap.jpg", height=Inches(0.75))
+                  mm_p = htable.rows[0].cells[1].paragraphs[0]
+                  mm_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                  mm_p.add_run().add_picture("mm.png", height=Inches(0.75))
+              except: pass
+ 
+              # --- PAGE 1: COVER PAGE ---
+              for _ in range(5): doc.add_paragraph()
+              title_p = doc.add_paragraph()
+              title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+              run = title_p.add_run(iflow_name)
+              run.font.size = Pt(32)
+              run.font.bold = True
+              run.font.color.rgb = RGBColor(31, 56, 100)
+ 
+              doc.add_paragraph("Technical Specification Document").alignment = WD_ALIGN_PARAGRAPH.CENTER
+              doc.add_paragraph("\n" * 2)
+ 
+              meta = doc.add_table(rows=3, cols=2)
+              meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+              meta.style = 'Table Grid'
+              for i, (l, v) in enumerate([("Author:", author), ("Date:", date), ("Version:", "1.0")]):
+                  meta.rows[i].cells[0].text = l
+                  meta.rows[i].cells[1].text = v
+              doc.add_page_break()
+ 
+              # --- PAGE 2: TABLE OF CONTENTS ---
+              doc.add_heading("Table of Contents", level=1).runs[0].font.color.rgb = RGBColor(31, 56, 100)
+              items = [
+                  ("1. Introduction", 0), ("1.1 Purpose", 1), ("1.2 Scope", 1),
+                  ("2. Integration Overview", 0), ("2.1 Integration Architecture", 1), ("2.2 Integration Components", 1),
+                  ("3. Integration Scenarios", 0), ("3.1 Scenario Description", 1), ("3.2 Data Flows", 1),
+                  ("4. Error Handling", 0), ("5. Testing Validation", 0)
+              ]
+              for text, ind in items:
+                  p = doc.add_paragraph(text)
+                  if ind == 1: p.paragraph_format.left_indent = Inches(0.3)
+              doc.add_page_break()
+ 
+              # --- PAGE 3: TECHNICAL CONTENT ---
+              add_numbered_heading(doc, "Introduction", 1, "1.")
+              add_numbered_heading(doc, "Purpose", 2, "1.1")
+              doc.add_paragraph("This document provides a detailed explanation of the solution as conceptualized for " + iflow_name + ".")
+              add_numbered_heading(doc, "Scope", 2, "1.2")
+              doc.add_paragraph("The technical specification outlines integration touchpoints and business scenarios required for consistent identity management.")
+ 
+              add_numbered_heading(doc, "Integration Overview", 1, "2.")
+              add_numbered_heading(doc, "Integration Architecture", 2, "2.1")
+              doc.add_paragraph("The integration architecture follows the standard SAP BTP Cloud Integration pattern.")
+ 
+              add_numbered_heading(doc, "Integration Scenarios", 1, "3.")
+              add_numbered_heading(doc, "Scenario Description", 2, "3.1")
+              doc.add_paragraph(ai_content)
+              doc.save(output_path)
+          if __name__ == "__main__":
+              build_docx(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
           EOF
-
-            pandoc "$TEMP_MD" \
-              --reference-doc=tools/reference.docx \
-              -o "$OUTPUT_DOCX"
-
-            rm -f "$TEMP_MD" payload.json "$QUERY_FILE"
-            ALL_DOCS_GENERATED=true
-          done < <(find "$BASE_PKG_DIR" -type f \( -name '*.iflw' -o -name 'iFlowContent.xml' \) -printf '%h\n' | sort -u)
-
-          echo "docs_generated=$ALL_DOCS_GENERATED" >> "$GITHUB_OUTPUT"
-
-      # -------------------------------------------------
-      # 5. Commit and Push
-      # -------------------------------------------------
-      - name: Commit and push generated docs
-        if: steps.documentation_step.outputs.docs_generated == 'true'
+ 
+          # 2️⃣ EXECUTION
+          BASE_DIR="cpi-artifacts/$PKG_ID"
+          for IFLOW_DIR in "$BASE_DIR"/*; do
+            if [ -d "$IFLOW_DIR" ]; then
+              IFLOW_NAME=$(basename "$IFLOW_DIR")
+              AUTHOR=$(git log -1 --pretty=format:'%an' || echo "Technical Lead")
+              DATE=$(date +%Y-%m-%d)
+              AI_CONTENT=$(curl -s https://api.openai.com/v1/chat/completions \
+                -H "Authorization: Bearer $OPENAI_API_KEY" \
+                -H "Content-Type: application/json" \
+                -d "{\"model\": \"gpt-4o-mini\", \"messages\": [{\"role\": \"user\", \"content\": \"Write a detailed technical scenario description for SAP CPI iFlow: $IFLOW_NAME. Include logic and transformation details.\"}]}" \
+                | jq -r '.choices[0].message.content')
+              python3 generate_docx.py "$IFLOW_NAME" "$AUTHOR" "$DATE" "$AI_CONTENT" "$IFLOW_DIR/${IFLOW_NAME}.docx"
+            fi
+          done
+ 
+      - name: Commit and Push
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 Auto-generated CPI Technical Specification"
+          git add .
+          git commit -m "🤖 DOCS: Standard format - Content starts Page 3" || echo "No changes"
           git push
